@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as nacl from 'tweetnacl';
 import { IconRefresh, IconCopy, IconCheck } from '@tabler/icons-react';
 
@@ -8,10 +8,14 @@ const App: React.FC = () => {
   const [recipientPublicKey, setRecipientPublicKey] = useState('');
   const [message, setMessage] = useState('');
   const [output, setOutput] = useState('');
+  const [masterKey, setMasterKey] = useState('');
+  const defaultMasterKey = '!default-master-key-42';
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [isEncrypting, setIsEncrypting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedOutput, setCopiedOutput] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [copiedEncryptedKey, setCopiedEncryptedKey] = useState(false);
 
   const uint8ArrayToBase36 = (arr: Uint8Array): string => {
     let bigInt = BigInt(0);
@@ -73,6 +77,53 @@ const App: React.FC = () => {
       await navigator.clipboard.writeText(keypairDisplay.publicKey);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const copyOutput = async () => {
+    if (output) {
+      // Remove the "Encrypted:" or "Decrypted:" prefix when copying
+      const textToCopy = output.replace(/^(Encrypted:|Decrypted:)\n/, '');
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedOutput(true);
+      setTimeout(() => setCopiedOutput(false), 2000);
+    }
+  };
+
+  const effectiveMasterKey = masterKey || defaultMasterKey;
+
+  const encryptedPrivateKey = useMemo(() => {
+    if (!keypair) return null;
+    
+    try {
+      // Derive a key from the effective master key using hash
+      const masterKeyBytes = new TextEncoder().encode(effectiveMasterKey);
+      const hashedKey = nacl.hash(masterKeyBytes).slice(0, nacl.secretbox.keyLength);
+      
+      // Generate a random nonce
+      const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+      
+      // Encrypt the secret key
+      const encrypted = nacl.secretbox(keypair.secretKey, nonce, hashedKey);
+      
+      // Combine nonce and encrypted data
+      const fullMessage = new Uint8Array(nonce.length + encrypted.length);
+      fullMessage.set(nonce);
+      fullMessage.set(encrypted, nonce.length);
+      
+      // Convert to base36 and format
+      return formatInGroups(uint8ArrayToBase36(fullMessage));
+    } catch (error) {
+      console.error('Failed to encrypt private key:', error);
+      return null;
+    }
+  }, [keypair, effectiveMasterKey]);
+
+  const copyEncryptedKey = async () => {
+    if (encryptedPrivateKey) {
+      await navigator.clipboard.writeText(encryptedPrivateKey);
+      setCopiedEncryptedKey(true);
+      setTimeout(() => setCopiedEncryptedKey(false), 2000);
     }
   };
 
@@ -159,8 +210,36 @@ const App: React.FC = () => {
       </div>
       
       <div style={{ marginTop: '20px', marginBottom: '20px' }}>
+        <h3>Master Key</h3>
+        <input
+          type="password"
+          value={masterKey}
+          onChange={(e) => setMasterKey(e.target.value)}
+          placeholder="Enter a custom master key/password..."
+          style={{
+            width: '100%',
+            padding: '8px',
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            marginBottom: '8px'
+          }}
+        />
+        <p style={{ 
+          fontSize: '12px', 
+          color: '#666', 
+          margin: '0' 
+        }}>
+          {masterKey 
+            ? 'Using your custom master key for encryption'
+            : 'Using default master key'}
+        </p>
+      </div>
+      
+      <div style={{ marginTop: '20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-          <h3 style={{ margin: 0, marginRight: '10px' }}>Your Keypair (Base36)</h3>
+          <h3 style={{ margin: 0, marginRight: '10px' }}>Your Keys</h3>
           <button
             onClick={() => generateKeypair(true)}
             disabled={isRegenerating}
@@ -198,7 +277,12 @@ const App: React.FC = () => {
           ) : keypairDisplay ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <strong>Public Key:</strong>
+                <strong>Private Key (Encrypted with Master Key):</strong>
+              </div>
+              {encryptedPrivateKey || 'Generating...'}
+              {'\n\n'}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <strong>Public Key (Shareable):</strong>
                 <button
                   onClick={copyPublicKey}
                   title="Copy public key to clipboard"
@@ -219,9 +303,6 @@ const App: React.FC = () => {
                 </button>
               </div>
               {keypairDisplay.publicKey}
-              {'\n\n'}
-              <strong>Secret Key:</strong>{'\n'}
-              {keypairDisplay.secretKey.replace(/[a-z0-9]/g, '•')}
             </>
           ) : (
             'Generating keypair...'
@@ -234,13 +315,13 @@ const App: React.FC = () => {
         
         <div style={{ marginBottom: '15px' }}>
           <label style={{ display: 'block', marginBottom: '5px' }}>
-            Other Person's Public Key (base36) - Recipient for encrypt, Sender for decrypt:
+            Recipient's Public Key:
           </label>
           <input
             type="text"
             value={recipientPublicKey}
             onChange={(e) => setRecipientPublicKey(e.target.value)}
-            placeholder="Enter public key in base36 format"
+            placeholder="Enter recipient's public key..."
             style={{
               width: '100%',
               padding: '8px',
@@ -254,12 +335,12 @@ const App: React.FC = () => {
 
         <div style={{ marginBottom: '15px' }}>
           <label style={{ display: 'block', marginBottom: '5px' }}>
-            Message (plain text for encrypt, base36 for decrypt):
+            Message:
           </label>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Enter your message here"
+            placeholder="Enter your message contents here..."
             rows={4}
             style={{
               width: '100%',
@@ -318,9 +399,36 @@ const App: React.FC = () => {
               fontFamily: 'monospace',
               fontSize: '14px',
               whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all'
+              wordBreak: 'break-all',
+              position: 'relative'
             }}>
-              {output}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div style={{ flex: 1 }}>
+                  {output}
+                </div>
+                {output !== 'Encrypting...' && output !== 'Decrypting...' && (
+                  <button
+                    onClick={copyOutput}
+                    title="Copy output to clipboard"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '12px',
+                      marginLeft: '10px',
+                      flexShrink: 0
+                    }}
+                  >
+                    {copiedOutput ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                    {copiedOutput ? 'Copied!' : 'Copy'}
+                  </button>
+                )}
+              </div>
             </code>
           </div>
         )}
