@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [copiedOutput, setCopiedOutput] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [copiedEncryptedKey, setCopiedEncryptedKey] = useState(false);
+  const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
 
   const uint8ArrayToBase36 = (arr: Uint8Array): string => {
     let bigInt = BigInt(0);
@@ -68,8 +69,59 @@ const App: React.FC = () => {
     }
   };
 
+  const tryRestoreFromHash = (hash: string, key: string) => {
+    try {
+      // Convert from base36 back to Uint8Array
+      const encryptedData = base36ToUint8Array(hash);
+      
+      // Derive key from master key
+      const masterKeyBytes = new TextEncoder().encode(key);
+      const hashedKey = nacl.hash(masterKeyBytes).slice(0, nacl.secretbox.keyLength);
+      
+      // Extract nonce and encrypted content
+      const nonce = encryptedData.slice(0, nacl.secretbox.nonceLength);
+      const encrypted = encryptedData.slice(nacl.secretbox.nonceLength);
+      
+      // Try to decrypt
+      const decrypted = nacl.secretbox.open(encrypted, nonce, hashedKey);
+      
+      if (decrypted && decrypted.length === 32) {
+        // Successfully decrypted, this should be the secret key
+        // Generate the public key from the secret key
+        const pair = nacl.box.keyPair.fromSecretKey(decrypted);
+        
+        setKeypair(pair);
+        
+        const publicKeyBase36 = formatInGroups(uint8ArrayToBase36(pair.publicKey));
+        const secretKeyBase36 = formatInGroups(uint8ArrayToBase36(pair.secretKey));
+        
+        setKeypairDisplay({
+          publicKey: publicKeyBase36,
+          secretKey: secretKeyBase36
+        });
+        
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to restore from hash:', error);
+    }
+    return false;
+  };
+
   useEffect(() => {
-    generateKeypair();
+    // Check if there's an encrypted key in the URL hash
+    const hash = window.location.hash.slice(1); // Remove the #
+    if (hash) {
+      // Try to restore with default key first
+      const restored = tryRestoreFromHash(hash, defaultMasterKey);
+      if (!restored) {
+        // If default key didn't work, we'll need the user to enter their master key
+        setWaitingForMasterKey(true);
+      }
+    } else {
+      // No key in URL, generate a new one
+      generateKeypair();
+    }
   }, []);
 
   const copyPublicKey = async () => {
@@ -118,6 +170,27 @@ const App: React.FC = () => {
       return null;
     }
   }, [keypair, effectiveMasterKey]);
+
+  // Update URL hash when encrypted private key changes
+  useEffect(() => {
+    if (encryptedPrivateKey) {
+      // Remove spaces from the encrypted key for URL
+      const cleanKey = encryptedPrivateKey.replace(/\s/g, '');
+      window.location.hash = cleanKey;
+    }
+  }, [encryptedPrivateKey]);
+
+  // Try to restore from hash when master key changes
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (hash && masterKey && waitingForMasterKey) {
+      // Try to restore with the user's master key
+      const restored = tryRestoreFromHash(hash, masterKey);
+      if (restored) {
+        setWaitingForMasterKey(false);
+      }
+    }
+  }, [masterKey, waitingForMasterKey]);
 
   const copyEncryptedKey = async () => {
     if (encryptedPrivateKey) {
@@ -195,7 +268,7 @@ const App: React.FC = () => {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>End-to-End Encryption Messenger</h1>
+      <h1>E2EE Local Messenger</h1>
       <div style={{
         backgroundColor: '#e3f2fd',
         border: '1px solid #90caf9',
@@ -216,6 +289,7 @@ const App: React.FC = () => {
           value={masterKey}
           onChange={(e) => setMasterKey(e.target.value)}
           placeholder="Enter a custom master key/password..."
+          autoFocus
           style={{
             width: '100%',
             padding: '8px',
@@ -274,6 +348,10 @@ const App: React.FC = () => {
         }}>
           {isRegenerating ? (
             'Regenerating keypair...'
+          ) : waitingForMasterKey ? (
+            <span style={{ color: '#d32f2f' }}>
+              ⚠️ Enter your master key above to restore your encrypted private key from URL
+            </span>
           ) : keypairDisplay ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -310,8 +388,9 @@ const App: React.FC = () => {
         </code>
       </div>
 
-      <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-        <h3>Encrypt/Decrypt Messages</h3>
+      {keypair && !waitingForMasterKey && (
+        <div style={{ marginTop: '20px', marginBottom: '20px' }}>
+          <h3>Encrypt/Decrypt Messages</h3>
         
         <div style={{ marginBottom: '15px' }}>
           <label style={{ display: 'block', marginBottom: '5px' }}>
@@ -432,7 +511,8 @@ const App: React.FC = () => {
             </code>
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

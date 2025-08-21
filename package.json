@@ -1,7 +1,7 @@
 {
-  "name": "basic-react-typescript-app",
+  "name": "e2ee-local-messenger",
   "version": "1.0.0",
-  "description": "Basic HTML + React + TypeScript app",
+  "description": "End-to-end encryption local messenger",
   "scripts": {
     "build": "esbuild src/index.tsx --bundle --minify --outfile=dist/bundle.js",
     "build:watch": "esbuild src/index.tsx --bundle --outfile=dist/bundle.js --watch"
