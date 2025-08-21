@@ -360,7 +360,7 @@ const App: React.FC = () => {
               {encryptedPrivateKey || 'Generating...'}
               {'\n\n'}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <strong>Public Key (Shareable):</strong>
+                <strong>Public Key (Share with your recipient):</strong>
                 <button
                   onClick={copyPublicKey}
                   title="Copy public key to clipboard"
