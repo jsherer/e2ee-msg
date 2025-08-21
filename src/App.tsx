@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [copiedEncryptedKey, setCopiedEncryptedKey] = useState(false);
   const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
+  const [nonceCounter, setNonceCounter] = useState(0);
 
   const uint8ArrayToBase36 = (arr: Uint8Array): string => {
     let bigInt = BigInt(0);
@@ -169,7 +170,7 @@ const App: React.FC = () => {
       console.error('Failed to encrypt private key:', error);
       return null;
     }
-  }, [keypair, effectiveMasterKey]);
+  }, [keypair, effectiveMasterKey, nonceCounter]);
 
   // Update URL hash when encrypted private key changes
   useEffect(() => {
@@ -224,6 +225,8 @@ const App: React.FC = () => {
       
       const encryptedBase36 = formatInGroups(uint8ArrayToBase36(fullMessage));
       setOutput(`Encrypted:\n${encryptedBase36}`);
+      // Re-encrypt private key with new nonce
+      setNonceCounter(prev => prev + 1);
     } catch (error) {
       setOutput(`Encryption error: ${error}`);
     } finally {
@@ -259,6 +262,8 @@ const App: React.FC = () => {
       
       const decryptedMessage = new TextDecoder().decode(decrypted);
       setOutput(`Decrypted:\n${decryptedMessage}`);
+      // Re-encrypt private key with new nonce
+      setNonceCounter(prev => prev + 1);
     } catch (error) {
       setOutput(`Decryption error: ${error}`);
     } finally {
