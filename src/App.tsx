@@ -275,6 +275,107 @@ const App: React.FC = () => {
     }
   };
 
+  // Show lock screen if master key not set
+  if (!masterKeyLocked) {
+    return (
+      <div style={{ 
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'Arial, sans-serif',
+        backgroundColor: '#f5f5f5'
+      }}>
+        <div style={{
+          backgroundColor: 'white',
+          padding: '40px',
+          borderRadius: '12px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          maxWidth: '400px',
+          width: '100%'
+        }}>
+          <h1 style={{ 
+            margin: '0 0 10px 0',
+            fontSize: '28px',
+            textAlign: 'center'
+          }}>
+            🔐 E2EE Local Messenger
+          </h1>
+          
+          <p style={{ 
+            textAlign: 'center',
+            color: '#666',
+            marginBottom: '30px',
+            fontSize: '14px'
+          }}>
+            Enter your master key to unlock
+          </p>
+
+          <input
+            type="password"
+            value={masterKey}
+            onChange={(e) => setMasterKey(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleMasterKeySubmit()}
+            placeholder="Master key / password"
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontFamily: 'monospace',
+              fontSize: '16px',
+              border: '2px solid #ddd',
+              borderRadius: '6px',
+              marginBottom: '15px',
+              boxSizing: 'border-box'
+            }}
+          />
+          
+          <button
+            onClick={handleMasterKeySubmit}
+            disabled={!masterKey}
+            style={{
+              width: '100%',
+              padding: '12px',
+              backgroundColor: masterKey ? '#4CAF50' : '#ccc',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              cursor: masterKey ? 'pointer' : 'not-allowed',
+              transition: 'background-color 0.2s'
+            }}
+          >
+            Unlock
+          </button>
+
+          {waitingForMasterKey && (
+            <p style={{ 
+              fontSize: '12px', 
+              color: '#ff9800',
+              margin: '15px 0 0 0',
+              textAlign: 'center'
+            }}>
+              📋 Encrypted key found in URL. Enter your master key to restore.
+            </p>
+          )}
+          
+          {!waitingForMasterKey && (
+            <p style={{ 
+              fontSize: '12px', 
+              color: '#666',
+              margin: '15px 0 0 0',
+              textAlign: 'center'
+            }}>
+              This key will encrypt your private keys for security
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Main app UI (after master key is set)
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1>E2EE Local Messenger</h1>
@@ -292,62 +393,17 @@ const App: React.FC = () => {
       </div>
       
       <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-        <h3>Master Key {masterKeyLocked && '(Locked)'}</h3>
-        {!masterKeyLocked ? (
-          <>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <input
-                type="password"
-                value={masterKey}
-                onChange={(e) => setMasterKey(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleMasterKeySubmit()}
-                placeholder="Enter your master key/password..."
-                autoFocus
-                style={{
-                  flex: 1,
-                  padding: '8px',
-                  fontFamily: 'monospace',
-                  fontSize: '14px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px'
-                }}
-              />
-              <button
-                onClick={handleMasterKeySubmit}
-                disabled={!masterKey}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: masterKey ? '#4CAF50' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: masterKey ? 'pointer' : 'not-allowed'
-                }}
-              >
-                Set Key
-              </button>
-            </div>
-            <p style={{ 
-              fontSize: '12px', 
-              color: '#d32f2f', 
-              margin: '8px 0 0 0',
-              fontWeight: 'bold'
-            }}>
-              ⚠️ Master key is required to generate or restore your encryption keys
-            </p>
-          </>
-        ) : (
-          <div style={{
-            padding: '8px',
-            fontFamily: 'monospace',
-            fontSize: '14px',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            backgroundColor: '#f9f9f9'
-          }}>
-            {'•'.repeat(masterKey.length)}
-          </div>
-        )}
+        <h3>Master Key (Locked)</h3>
+        <div style={{
+          padding: '8px',
+          fontFamily: 'monospace',
+          fontSize: '14px',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          backgroundColor: '#f9f9f9'
+        }}>
+          {'•'.repeat(masterKey.length)}
+        </div>
       </div>
       
       {masterKeyLocked && (
