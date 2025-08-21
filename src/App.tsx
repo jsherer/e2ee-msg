@@ -377,72 +377,111 @@ const App: React.FC = () => {
 
   // Main app UI (after master key is set)
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>E2EE Local Messenger</h1>
+    <div style={{ 
+      minHeight: '100vh',
+      backgroundColor: '#f5f5f5',
+      fontFamily: 'Arial, sans-serif'
+    }}>
       <div style={{
-        backgroundColor: '#e3f2fd',
-        border: '1px solid #90caf9',
-        borderRadius: '8px',
-        padding: '16px',
-        marginTop: '16px',
-        marginBottom: '20px'
+        maxWidth: '800px',
+        margin: '0 auto',
+        padding: '20px'
       }}>
-        <p style={{ margin: 0, lineHeight: '1.6', color: '#1565c0' }}>
-          Send encrypted messages using public key cryptography. Share your public key with others to receive messages, and use their public key to send encrypted messages only they can read.
-        </p>
-      </div>
-      
-      <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-        <h3>Master Key (Locked)</h3>
+        <h1 style={{ 
+          textAlign: 'center',
+          fontSize: '32px',
+          marginBottom: '30px',
+          color: '#333'
+        }}>
+          🔐 E2EE Local Messenger
+        </h1>
+        
+        {/* Master Key Card */}
         <div style={{
-          padding: '8px',
-          fontFamily: 'monospace',
-          fontSize: '14px',
-          border: '1px solid #ddd',
-          borderRadius: '4px',
-          backgroundColor: '#f9f9f9'
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          padding: '20px',
+          marginBottom: '20px',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
         }}>
-          {'•'.repeat(masterKey.length)}
+          <h3 style={{ 
+            margin: '0 0 10px 0',
+            fontSize: '18px',
+            color: '#333',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span style={{ color: '#4CAF50' }}>✓</span>
+            Master Key (Locked)
+          </h3>
+          <div style={{
+            padding: '10px',
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            border: '1px solid #e0e0e0',
+            borderRadius: '6px',
+            backgroundColor: '#fafafa'
+          }}>
+            {'•'.repeat(masterKey.length)}
+          </div>
         </div>
-      </div>
       
-      {masterKeyLocked && (
-        <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-            <h3 style={{ margin: 0, marginRight: '10px' }}>Your Keys</h3>
-          <button
-            onClick={() => generateKeypair(true)}
-            disabled={isRegenerating}
-            title="Generate new keypair"
-            style={{
-              background: 'transparent',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              cursor: isRegenerating ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '14px',
-              opacity: isRegenerating ? 0.6 : 1
-            }}
-          >
-            <IconRefresh size={16} />
-            {isRegenerating ? 'Regenerating...' : 'Regen'}
-          </button>
-        </div>
-        <code style={{
-          display: 'block',
-          backgroundColor: '#f4f4f4',
-          border: '1px solid #ddd',
-          borderRadius: '4px',
-          padding: '15px',
-          fontFamily: 'monospace',
-          fontSize: '14px',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all'
-        }}>
-          {isRegenerating ? (
+        {/* Keys Card */}
+        {masterKeyLocked && (
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '20px',
+            marginBottom: '20px',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              marginBottom: '15px' 
+            }}>
+              <h3 style={{ 
+                margin: 0,
+                fontSize: '18px',
+                color: '#333'
+              }}>
+                🔑 Your Keys
+              </h3>
+              <button
+                onClick={() => generateKeypair(true)}
+                disabled={isRegenerating}
+                title="Generate new keypair"
+                style={{
+                  background: 'white',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  padding: '6px 12px',
+                  cursor: isRegenerating ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '14px',
+                  opacity: isRegenerating ? 0.6 : 1,
+                  transition: 'all 0.2s'
+                }}
+              >
+                <IconRefresh size={16} />
+                {isRegenerating ? 'Regenerating...' : 'Regenerate'}
+              </button>
+            </div>
+            <div style={{
+              backgroundColor: '#fafafa',
+              border: '1px solid #e0e0e0',
+              borderRadius: '6px',
+              padding: '15px',
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all'
+            }}>
+              {isRegenerating ? (
             'Regenerating keypair...'
           ) : waitingForMasterKey ? (
             <span style={{ color: '#d32f2f' }}>
@@ -480,136 +519,183 @@ const App: React.FC = () => {
             </>
           ) : (
             'Generating keypair...'
-          )}
-        </code>
-        </div>
-      )}
-
-      {keypair && !waitingForMasterKey && (
-        <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-          <h3>Encrypt/Decrypt Messages</h3>
-        
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>
-            Recipient's Public Key:
-          </label>
-          <input
-            type="text"
-            value={recipientPublicKey}
-            onChange={(e) => setRecipientPublicKey(e.target.value)}
-            placeholder="Enter recipient's public key..."
-            style={{
-              width: '100%',
-              padding: '8px',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              border: '1px solid #ddd',
-              borderRadius: '4px'
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>
-            Message:
-          </label>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Enter your message contents here..."
-            rows={4}
-            style={{
-              width: '100%',
-              padding: '8px',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              border: '1px solid #ddd',
-              borderRadius: '4px'
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <button 
-            onClick={handleEncrypt}
-            disabled={isEncrypting || isDecrypting}
-            style={{
-              padding: '10px 20px',
-              marginRight: '10px',
-              backgroundColor: isEncrypting || isDecrypting ? '#ccc' : '#4CAF50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isEncrypting || isDecrypting ? 'not-allowed' : 'pointer',
-              opacity: isEncrypting || isDecrypting ? 0.6 : 1
-            }}
-          >
-            {isEncrypting ? 'Encrypting...' : 'Encrypt'}
-          </button>
-          <button 
-            onClick={handleDecrypt}
-            disabled={isEncrypting || isDecrypting}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: isEncrypting || isDecrypting ? '#ccc' : '#2196F3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isEncrypting || isDecrypting ? 'not-allowed' : 'pointer',
-              opacity: isEncrypting || isDecrypting ? 0.6 : 1
-            }}
-          >
-            {isDecrypting ? 'Decrypting...' : 'Decrypt'}
-          </button>
-        </div>
-
-        {output && (
-          <div style={{ marginTop: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '5px' }}>Output:</label>
-            <code style={{
-              display: 'block',
-              backgroundColor: '#f4f4f4',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              padding: '15px',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              position: 'relative'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <div style={{ flex: 1 }}>
-                  {output}
-                </div>
-                {output !== 'Encrypting...' && output !== 'Decrypting...' && (
-                  <button
-                    onClick={copyOutput}
-                    title="Copy output to clipboard"
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      padding: '2px 6px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: '12px',
-                      marginLeft: '10px',
-                      flexShrink: 0
-                    }}
-                  >
-                    {copiedOutput ? <IconCheck size={14} /> : <IconCopy size={14} />}
-                    {copiedOutput ? 'Copied!' : 'Copy'}
-                  </button>
-                )}
-              </div>
-            </code>
+            )}
+            </div>
           </div>
         )}
-        </div>
-      )}
+
+        {/* Encrypt/Decrypt Card */}
+        {keypair && !waitingForMasterKey && (
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '20px',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+          }}>
+            <h3 style={{ 
+              margin: '0 0 20px 0',
+              fontSize: '18px',
+              color: '#333'
+            }}>
+              💬 Encrypt/Decrypt Messages
+            </h3>
+        
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#555'
+              }}>
+                Recipient's Public Key:
+              </label>
+              <input
+                type="text"
+                value={recipientPublicKey}
+                onChange={(e) => setRecipientPublicKey(e.target.value)}
+                placeholder="Enter recipient's public key..."
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  fontFamily: 'monospace',
+                  fontSize: '14px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  boxSizing: 'border-box',
+                  transition: 'border-color 0.2s'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#555'
+              }}>
+                Message:
+              </label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Enter your message contents here..."
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  fontFamily: 'monospace',
+                  fontSize: '14px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  boxSizing: 'border-box',
+                  resize: 'vertical',
+                  transition: 'border-color 0.2s'
+                }}
+              />
+            </div>
+
+            <div style={{ 
+              display: 'flex',
+              gap: '10px',
+              marginBottom: '20px' 
+            }}>
+              <button 
+                onClick={handleEncrypt}
+                disabled={isEncrypting || isDecrypting}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: isEncrypting || isDecrypting ? '#ccc' : '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  cursor: isEncrypting || isDecrypting ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                {isEncrypting ? 'Encrypting...' : 'Encrypt'}
+              </button>
+              <button 
+                onClick={handleDecrypt}
+                disabled={isEncrypting || isDecrypting}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: isEncrypting || isDecrypting ? '#ccc' : '#2196F3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  cursor: isEncrypting || isDecrypting ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                {isDecrypting ? 'Decrypting...' : 'Decrypt'}
+              </button>
+            </div>
+
+            {output && (
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#555'
+                }}>
+                  Output:
+                </label>
+                <div style={{
+                  backgroundColor: '#fafafa',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  padding: '15px',
+                  fontFamily: 'monospace',
+                  fontSize: '13px',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                  position: 'relative'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <div style={{ flex: 1 }}>
+                      {output}
+                    </div>
+                    {output !== 'Encrypting...' && output !== 'Decrypting...' && (
+                      <button
+                        onClick={copyOutput}
+                        title="Copy output to clipboard"
+                        style={{
+                          background: 'white',
+                          border: '1px solid #e0e0e0',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '12px',
+                          marginLeft: '10px',
+                          flexShrink: 0,
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {copiedOutput ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                        {copiedOutput ? 'Copied!' : 'Copy'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
