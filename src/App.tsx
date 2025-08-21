@@ -9,7 +9,7 @@ const App: React.FC = () => {
   const [message, setMessage] = useState('');
   const [output, setOutput] = useState('');
   const [masterKey, setMasterKey] = useState('');
-  const defaultMasterKey = '!default-master-key-42';
+  const [masterKeyLocked, setMasterKeyLocked] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [isEncrypting, setIsEncrypting] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -113,16 +113,10 @@ const App: React.FC = () => {
     // Check if there's an encrypted key in the URL hash
     const hash = window.location.hash.slice(1); // Remove the #
     if (hash) {
-      // Try to restore with default key first
-      const restored = tryRestoreFromHash(hash, defaultMasterKey);
-      if (!restored) {
-        // If default key didn't work, we'll need the user to enter their master key
-        setWaitingForMasterKey(true);
-      }
-    } else {
-      // No key in URL, generate a new one
-      generateKeypair();
+      // We need the user to enter their master key to restore
+      setWaitingForMasterKey(true);
     }
+    // Don't generate keys without a master key
   }, []);
 
   const copyPublicKey = async () => {
@@ -143,10 +137,10 @@ const App: React.FC = () => {
     }
   };
 
-  const effectiveMasterKey = masterKey || defaultMasterKey;
+  const effectiveMasterKey = masterKey;
 
   const encryptedPrivateKey = useMemo(() => {
-    if (!keypair) return null;
+    if (!keypair || !effectiveMasterKey) return null;
     
     try {
       // Derive a key from the effective master key using hash
@@ -181,17 +175,27 @@ const App: React.FC = () => {
     }
   }, [encryptedPrivateKey]);
 
-  // Try to restore from hash when master key changes
-  useEffect(() => {
+  // Handle master key submission
+  const handleMasterKeySubmit = () => {
+    if (!masterKey) return;
+    
     const hash = window.location.hash.slice(1);
-    if (hash && masterKey && waitingForMasterKey) {
+    if (hash) {
       // Try to restore with the user's master key
       const restored = tryRestoreFromHash(hash, masterKey);
       if (restored) {
         setWaitingForMasterKey(false);
+        setMasterKeyLocked(true);
+      } else {
+        // Wrong master key for this hash
+        alert('Invalid master key for the encrypted private key in URL');
       }
+    } else {
+      // No hash, generate new keypair
+      generateKeypair();
+      setMasterKeyLocked(true);
     }
-  }, [masterKey, waitingForMasterKey]);
+  };
 
   const copyEncryptedKey = async () => {
     if (encryptedPrivateKey) {
@@ -288,37 +292,68 @@ const App: React.FC = () => {
       </div>
       
       <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-        <h3>Master Key</h3>
-        <input
-          type="password"
-          value={masterKey}
-          onChange={(e) => setMasterKey(e.target.value)}
-          placeholder="Enter a custom master key/password..."
-          autoFocus
-          style={{
-            width: '100%',
+        <h3>Master Key {masterKeyLocked && '(Locked)'}</h3>
+        {!masterKeyLocked ? (
+          <>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <input
+                type="password"
+                value={masterKey}
+                onChange={(e) => setMasterKey(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleMasterKeySubmit()}
+                placeholder="Enter your master key/password..."
+                autoFocus
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  fontFamily: 'monospace',
+                  fontSize: '14px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
+              />
+              <button
+                onClick={handleMasterKeySubmit}
+                disabled={!masterKey}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: masterKey ? '#4CAF50' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: masterKey ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Set Key
+              </button>
+            </div>
+            <p style={{ 
+              fontSize: '12px', 
+              color: '#d32f2f', 
+              margin: '8px 0 0 0',
+              fontWeight: 'bold'
+            }}>
+              ⚠️ Master key is required to generate or restore your encryption keys
+            </p>
+          </>
+        ) : (
+          <div style={{
             padding: '8px',
             fontFamily: 'monospace',
             fontSize: '14px',
             border: '1px solid #ddd',
             borderRadius: '4px',
-            marginBottom: '8px'
-          }}
-        />
-        <p style={{ 
-          fontSize: '12px', 
-          color: '#666', 
-          margin: '0' 
-        }}>
-          {masterKey 
-            ? 'Using your custom master key for encryption'
-            : 'Using default master key'}
-        </p>
+            backgroundColor: '#f9f9f9'
+          }}>
+            {'•'.repeat(masterKey.length)}
+          </div>
+        )}
       </div>
       
-      <div style={{ marginTop: '20px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-          <h3 style={{ margin: 0, marginRight: '10px' }}>Your Keys</h3>
+      {masterKeyLocked && (
+        <div style={{ marginTop: '20px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ margin: 0, marginRight: '10px' }}>Your Keys</h3>
           <button
             onClick={() => generateKeypair(true)}
             disabled={isRegenerating}
@@ -391,7 +426,8 @@ const App: React.FC = () => {
             'Generating keypair...'
           )}
         </code>
-      </div>
+        </div>
+      )}
 
       {keypair && !waitingForMasterKey && (
         <div style={{ marginTop: '20px', marginBottom: '20px' }}>
