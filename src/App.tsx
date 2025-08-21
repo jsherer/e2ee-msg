@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import * as nacl from 'tweetnacl';
 import { IconRefresh, IconCopy, IconCheck } from '@tabler/icons-react';
+import { uint8ArrayToWords, wordsToUint8Array, formatWords, isBIP39Format } from './bip39';
 
 const App: React.FC = () => {
   const [keypair, setKeypair] = useState<{ publicKey: Uint8Array; secretKey: Uint8Array } | null>(null);
@@ -18,6 +19,7 @@ const App: React.FC = () => {
   const [copiedEncryptedKey, setCopiedEncryptedKey] = useState(false);
   const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
   const [nonceCounter, setNonceCounter] = useState(0);
+  const [displayFormat, setDisplayFormat] = useState<'base36' | 'words'>('base36');
 
   const uint8ArrayToBase36 = (arr: Uint8Array): string => {
     let bigInt = BigInt(0);
@@ -119,8 +121,23 @@ const App: React.FC = () => {
     // Don't generate keys without a master key
   }, []);
 
+  const publicKeyWords = useMemo(() => {
+    if (!keypair) return null;
+    try {
+      const words = uint8ArrayToWords(keypair.publicKey);
+      return formatWords(words, 3);
+    } catch (error) {
+      console.error('Failed to convert to words:', error);
+      return null;
+    }
+  }, [keypair]);
+
   const copyPublicKey = async () => {
-    if (keypairDisplay) {
+    if (displayFormat === 'words' && publicKeyWords) {
+      await navigator.clipboard.writeText(publicKeyWords.replace(/\n/g, ' '));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else if (keypairDisplay) {
       await navigator.clipboard.writeText(keypairDisplay.publicKey);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -217,7 +234,15 @@ const App: React.FC = () => {
     await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
-      const recipientKey = base36ToUint8Array(recipientPublicKey, 32);
+      // Auto-detect format and convert to Uint8Array
+      let recipientKey: Uint8Array;
+      if (isBIP39Format(recipientPublicKey)) {
+        const words = recipientPublicKey.toLowerCase().trim().split(/\s+/);
+        recipientKey = wordsToUint8Array(words);
+      } else {
+        recipientKey = base36ToUint8Array(recipientPublicKey, 32);
+      }
+      
       const nonce = nacl.randomBytes(nacl.box.nonceLength);
       const messageUint8 = new TextEncoder().encode(message);
       
@@ -250,7 +275,15 @@ const App: React.FC = () => {
     await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
-      const senderKey = base36ToUint8Array(recipientPublicKey, 32);
+      // Auto-detect format and convert to Uint8Array
+      let senderKey: Uint8Array;
+      if (isBIP39Format(recipientPublicKey)) {
+        const words = recipientPublicKey.toLowerCase().trim().split(/\s+/);
+        senderKey = wordsToUint8Array(words);
+      } else {
+        senderKey = base36ToUint8Array(recipientPublicKey, 32);
+      }
+      
       const fullMessage = base36ToUint8Array(message);
       
       const nonce = fullMessage.slice(0, nacl.box.nonceLength);
@@ -449,27 +482,44 @@ const App: React.FC = () => {
               }}>
                 🔑 Your Keys
               </h3>
-              <button
-                onClick={() => generateKeypair(true)}
-                disabled={isRegenerating}
-                title="Generate new keypair"
-                style={{
-                  background: 'white',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '6px',
-                  padding: '6px 12px',
-                  cursor: isRegenerating ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '14px',
-                  opacity: isRegenerating ? 0.6 : 1,
-                  transition: 'all 0.2s'
-                }}
-              >
-                <IconRefresh size={16} />
-                {isRegenerating ? 'Regenerating...' : 'Regenerate'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => setDisplayFormat(displayFormat === 'base36' ? 'words' : 'base36')}
+                  title="Toggle display format"
+                  style={{
+                    background: 'white',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '6px',
+                    padding: '6px 12px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {displayFormat === 'base36' ? '📝 Words' : '🔢 Base36'}
+                </button>
+                <button
+                  onClick={() => generateKeypair(true)}
+                  disabled={isRegenerating}
+                  title="Generate new keypair"
+                  style={{
+                    background: 'white',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '6px',
+                    padding: '6px 12px',
+                    cursor: isRegenerating ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '14px',
+                    opacity: isRegenerating ? 0.6 : 1,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <IconRefresh size={16} />
+                  {isRegenerating ? 'Regenerating...' : 'Regenerate'}
+                </button>
+              </div>
             </div>
             <div style={{
               backgroundColor: '#fafafa',
@@ -515,7 +565,13 @@ const App: React.FC = () => {
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-              {keypairDisplay.publicKey}
+              {displayFormat === 'words' && publicKeyWords ? (
+                <div style={{ fontSize: '12px', lineHeight: '1.6' }}>
+                  {publicKeyWords}
+                </div>
+              ) : (
+                keypairDisplay.publicKey
+              )}
             </>
           ) : (
             'Generating keypair...'
@@ -554,7 +610,7 @@ const App: React.FC = () => {
                 type="text"
                 value={recipientPublicKey}
                 onChange={(e) => setRecipientPublicKey(e.target.value)}
-                placeholder="Enter recipient's public key..."
+                placeholder="Enter public key (base36 or 24 words)..."
                 style={{
                   width: '100%',
                   padding: '10px',
