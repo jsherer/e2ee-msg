@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [nonceCounter, setNonceCounter] = useState(0);
   const [displayFormat, setDisplayFormat] = useState<'base36' | 'words' | 'qr'>('base36');
   const [showScanner, setShowScanner] = useState(false);
+  const [hasCamera, setHasCamera] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QrScanner | null>(null);
 
@@ -318,8 +319,9 @@ const App: React.FC = () => {
       fullMessage.set(nonce);
       fullMessage.set(encrypted, nonce.length);
       
-      const encryptedBase36 = formatInGroups(uint8ArrayToBase36(fullMessage));
-      setOutput(`Encrypted:\n${encryptedBase36}`);
+      const formattedOutput = formatInGroups(uint8ArrayToBase36(fullMessage));
+      setOutput(`Encrypted:\n${formattedOutput}`);
+      
       // Re-encrypt private key with new nonce
       setNonceCounter(prev => prev + 1);
     } catch (error) {
@@ -352,7 +354,20 @@ const App: React.FC = () => {
         stream.getTracks().forEach(track => track.stop());
       } catch (permError) {
         console.error('Camera permission denied:', permError);
-        alert('Camera access denied. Please enable camera permissions for this site in your browser settings.');
+        
+        // Check if we're on HTTPS
+        const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+        
+        let errorMessage = 'Camera access denied. ';
+        if (!isSecure) {
+          errorMessage += 'Camera access requires HTTPS. Please use HTTPS or run on localhost.';
+        } else {
+          errorMessage += 'Please enable camera permissions for this site in your browser settings.';
+        }
+        
+        alert(errorMessage);
         setShowScanner(false);
         return;
       }
@@ -401,6 +416,11 @@ const App: React.FC = () => {
     }
     setShowScanner(false);
   };
+
+  // Check for camera availability on mount
+  useEffect(() => {
+    QrScanner.hasCamera().then(setHasCamera).catch(() => setHasCamera(false));
+  }, []);
 
   // Start scanner when modal opens
   useEffect(() => {
@@ -453,6 +473,7 @@ const App: React.FC = () => {
       
       const decryptedMessage = new TextDecoder().decode(decrypted);
       setOutput(`Decrypted:\n${decryptedMessage}`);
+      
       // Re-encrypt private key with new nonce
       setNonceCounter(prev => prev + 1);
     } catch (error) {
@@ -884,43 +905,45 @@ const App: React.FC = () => {
                     transition: 'border-color 0.2s'
                   }}
                 />
-                <button
-                  onClick={() => {
-                    // Check if we're on HTTPS or localhost
-                    const isSecure = window.location.protocol === 'https:' || 
-                                   window.location.hostname === 'localhost' || 
-                                   window.location.hostname === '127.0.0.1';
-                    
-                    if (!isSecure) {
-                      alert('Camera access requires HTTPS. Please use HTTPS or run on localhost.');
-                      return;
-                    }
-                    
-                    setShowScanner(true);
-                  }}
-                  title="Scan QR code"
-                  style={{
-                    padding: '10px',
-                    backgroundColor: 'white',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f5f5f5';
-                    e.currentTarget.style.borderColor = '#2196F3';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = 'white';
-                    e.currentTarget.style.borderColor = '#e0e0e0';
-                  }}
-                >
-                  <IconQrcode size={20} />
-                </button>
+                {hasCamera && (
+                  <button
+                    onClick={() => {
+                      // Check if we're on HTTPS or localhost
+                      const isSecure = window.location.protocol === 'https:' || 
+                                     window.location.hostname === 'localhost' || 
+                                     window.location.hostname === '127.0.0.1';
+                      
+                      if (!isSecure) {
+                        alert('Camera access requires HTTPS. Please use HTTPS or run on localhost.');
+                        return;
+                      }
+                      
+                      setShowScanner(true);
+                    }}
+                    title="Scan QR code"
+                    style={{
+                      padding: '10px',
+                      backgroundColor: 'white',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f5f5f5';
+                      e.currentTarget.style.borderColor = '#2196F3';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = 'white';
+                      e.currentTarget.style.borderColor = '#e0e0e0';
+                    }}
+                  >
+                    <IconQrcode size={20} />
+                  </button>
+                )}
               </div>
             </div>
 
