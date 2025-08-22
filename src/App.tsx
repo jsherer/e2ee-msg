@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as nacl from 'tweetnacl';
-import { IconRefresh, IconCopy, IconCheck } from '@tabler/icons-react';
+import { IconRefresh, IconCopy, IconCheck, IconQrcode, IconX } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
+import QrScanner from 'qr-scanner';
 import { uint8ArrayToWords, wordsToUint8Array, formatWords, isBIP39Format } from './bip39';
 
 const App: React.FC = () => {
@@ -21,6 +22,9 @@ const App: React.FC = () => {
   const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
   const [nonceCounter, setNonceCounter] = useState(0);
   const [displayFormat, setDisplayFormat] = useState<'base36' | 'words' | 'qr'>('base36');
+  const [showScanner, setShowScanner] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scannerRef = useRef<QrScanner | null>(null);
 
   const uint8ArrayToBase36 = (arr: Uint8Array): string => {
     let bigInt = BigInt(0);
@@ -324,6 +328,94 @@ const App: React.FC = () => {
       setIsEncrypting(false);
     }
   };
+
+  const startScanner = async () => {
+    if (!videoRef.current) return;
+    
+    try {
+      // First check if camera is available
+      const hasCamera = await QrScanner.hasCamera();
+      if (!hasCamera) {
+        alert('No camera found on this device.');
+        setShowScanner(false);
+        return;
+      }
+
+      // For iOS, we need to explicitly request camera permission
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment' // Prefer back camera
+          } 
+        });
+        // Stop the test stream immediately
+        stream.getTracks().forEach(track => track.stop());
+      } catch (permError) {
+        console.error('Camera permission denied:', permError);
+        alert('Camera access denied. Please enable camera permissions for this site in your browser settings.');
+        setShowScanner(false);
+        return;
+      }
+
+      const scanner = new QrScanner(
+        videoRef.current,
+        (result: QrScanner.ScanResult) => {
+          // Handle the scanned result
+          const scannedText = result.data;
+          
+          // Check if it's a valid public key format
+          if (scannedText) {
+            // Remove any whitespace for validation
+            const cleanText = scannedText.trim();
+            
+            // Set the recipient public key field
+            setRecipientPublicKey(cleanText);
+            
+            // Close the scanner
+            stopScanner();
+          }
+        },
+        {
+          returnDetailedScanResult: true,
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          preferredCamera: 'environment', // Use back camera
+          maxScansPerSecond: 5,
+        }
+      );
+      
+      scannerRef.current = scanner;
+      await scanner.start();
+    } catch (error) {
+      console.error('Failed to start scanner:', error);
+      alert('Failed to access camera. Please ensure camera permissions are granted and try again.');
+      setShowScanner(false);
+    }
+  };
+
+  const stopScanner = () => {
+    if (scannerRef.current) {
+      scannerRef.current.stop();
+      scannerRef.current.destroy();
+      scannerRef.current = null;
+    }
+    setShowScanner(false);
+  };
+
+  // Start scanner when modal opens
+  useEffect(() => {
+    if (showScanner && videoRef.current) {
+      startScanner();
+    }
+    
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.stop();
+        scannerRef.current.destroy();
+        scannerRef.current = null;
+      }
+    };
+  }, [showScanner]);
 
   const handleDecrypt = async () => {
     if (!keypair || !recipientPublicKey || !message) {
@@ -775,22 +867,61 @@ const App: React.FC = () => {
               }}>
                 Recipient's Public Key:
               </label>
-              <input
-                type="text"
-                value={recipientPublicKey}
-                onChange={(e) => setRecipientPublicKey(e.target.value)}
-                placeholder="Enter public key (base36 or 24 words)..."
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  fontFamily: 'monospace',
-                  fontSize: '14px',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '6px',
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.2s'
-                }}
-              />
+              <div style={{ position: 'relative', display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={recipientPublicKey}
+                  onChange={(e) => setRecipientPublicKey(e.target.value)}
+                  placeholder="Enter public key (base36 or 24 words)..."
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    fontFamily: 'monospace',
+                    fontSize: '14px',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.2s'
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    // Check if we're on HTTPS or localhost
+                    const isSecure = window.location.protocol === 'https:' || 
+                                   window.location.hostname === 'localhost' || 
+                                   window.location.hostname === '127.0.0.1';
+                    
+                    if (!isSecure) {
+                      alert('Camera access requires HTTPS. Please use HTTPS or run on localhost.');
+                      return;
+                    }
+                    
+                    setShowScanner(true);
+                  }}
+                  title="Scan QR code"
+                  style={{
+                    padding: '10px',
+                    backgroundColor: 'white',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f5f5f5';
+                    e.currentTarget.style.borderColor = '#2196F3';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.backgroundColor = 'white';
+                    e.currentTarget.style.borderColor = '#e0e0e0';
+                  }}
+                >
+                  <IconQrcode size={20} />
+                </button>
+              </div>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
@@ -918,6 +1049,83 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        )}
+        
+        {/* QR Scanner Modal */}
+        {showScanner && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '20px',
+              maxWidth: '500px',
+              width: '90%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '15px'
+              }}>
+                <h3 style={{ margin: 0 }}>Scan QR Code</h3>
+                <button
+                  onClick={stopScanner}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >
+                  <IconX size={24} />
+                </button>
+              </div>
+              
+              <div style={{
+                position: 'relative',
+                width: '100%',
+                backgroundColor: '#000',
+                borderRadius: '8px',
+                overflow: 'hidden'
+              }}>
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block'
+                  }}
+                />
+              </div>
+              
+              <p style={{
+                textAlign: 'center',
+                color: '#666',
+                fontSize: '14px',
+                marginTop: '15px',
+                marginBottom: 0
+              }}>
+                Position the QR code within the frame to scan
+              </p>
+            </div>
           </div>
         )}
       </div>
