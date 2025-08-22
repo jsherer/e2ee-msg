@@ -1,7 +1,7 @@
 {
-  "name": "e2ee-local-messenger",
+  "name": "e2ee-msg",
   "version": "1.0.0",
-  "description": "End-to-end encryption local messenger",
+  "description": "A local (no-server) end-to-end encryption messaging tool",
   "scripts": {
     "build": "esbuild src/index.tsx --bundle --minify --outfile=dist/bundle.js",
     "build:watch": "esbuild src/index.tsx --bundle --outfile=dist/bundle.js --watch",
