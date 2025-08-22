@@ -125,11 +125,24 @@ const App: React.FC = () => {
     if (!keypair) return null;
     try {
       const words = uint8ArrayToWords(keypair.publicKey);
-      return formatWords(words, 3);
+      return formatWords(words, 6);
     } catch (error) {
       console.error('Failed to convert to words:', error);
       return null;
     }
+  }, [keypair]);
+
+  const userId = useMemo(() => {
+    if (!keypair) return null;
+    // Create a hash of the public key for a unique user ID
+    const hash = nacl.hash(keypair.publicKey);
+    // Take first 8 bytes and convert to hex for a shorter ID
+    const idBytes = hash.slice(0, 8);
+    const hexId = Array.from(idBytes)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    // Format as XXXX-XXXX-XXXX-XXXX
+    return hexId.match(/.{1,4}/g)?.join('-') || hexId;
   }, [keypair]);
 
   const copyPublicKey = async () => {
@@ -195,6 +208,12 @@ const App: React.FC = () => {
   // Handle master key submission
   const handleMasterKeySubmit = () => {
     if (!masterKey) return;
+    
+    // Check minimum length
+    if (masterKey.length < 12) {
+      alert('Master key must be at least 12 characters long');
+      return;
+    }
     
     const hash = window.location.hash.slice(1);
     if (hash) {
@@ -365,17 +384,17 @@ const App: React.FC = () => {
           
           <button
             onClick={handleMasterKeySubmit}
-            disabled={!masterKey}
+            disabled={!masterKey || masterKey.length < 12}
             style={{
               width: '100%',
               padding: '12px',
-              backgroundColor: masterKey ? '#4CAF50' : '#ccc',
+              backgroundColor: masterKey && masterKey.length >= 12 ? '#4CAF50' : '#ccc',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
               fontSize: '16px',
               fontWeight: 'bold',
-              cursor: masterKey ? 'pointer' : 'not-allowed',
+              cursor: masterKey && masterKey.length >= 12 ? 'pointer' : 'not-allowed',
               transition: 'background-color 0.2s'
             }}
           >
@@ -428,7 +447,15 @@ const App: React.FC = () => {
               margin: '15px 0 0 0',
               textAlign: 'center'
             }}>
-              This key will encrypt your private keys for security
+              {masterKey.length > 0 && masterKey.length < 12 ? (
+                <span style={{ color: '#ff9800' }}>
+                  {masterKey.length}/12 characters minimum
+                </span>
+              ) : masterKey.length >= 12 ? (
+                'This key will encrypt your private keys for security'
+              ) : (
+                'This key will encrypt your private keys for security'
+              )}
             </p>
           )}
         </div>
@@ -474,7 +501,7 @@ const App: React.FC = () => {
             gap: '8px'
           }}>
             <span style={{ color: '#4CAF50' }}>✓</span>
-            Master Key (Locked)
+            Master Key (Unlocked)
           </h3>
           <div style={{
             padding: '10px',
@@ -512,22 +539,11 @@ const App: React.FC = () => {
               </h3>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
-                  onClick={() => setDisplayFormat(displayFormat === 'base36' ? 'words' : 'base36')}
-                  title="Toggle display format"
-                  style={{
-                    background: 'white',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    transition: 'all 0.2s'
+                  onClick={() => {
+                    if (window.confirm('Generate new keys?\n\nThis will replace your current keypair. You will lose access to messages encrypted with the old keys.\n\nContinue?')) {
+                      generateKeypair(true);
+                    }
                   }}
-                >
-                  {displayFormat === 'base36' ? '📝 Words' : '🔢 Base36'}
-                </button>
-                <button
-                  onClick={() => generateKeypair(true)}
                   disabled={isRegenerating}
                   title="Generate new keypair"
                   style={{
@@ -567,6 +583,15 @@ const App: React.FC = () => {
             </span>
           ) : keypairDisplay ? (
             <>
+              {userId && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <strong>User ID:</strong>
+                  </div>
+                  {userId}
+                  {'\n\n'}
+                </>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <strong>Private Key (Encrypted with Master Key):</strong>
               </div>
@@ -574,24 +599,40 @@ const App: React.FC = () => {
               {'\n\n'}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <strong>Public Key (Share with your recipient):</strong>
-                <button
-                  onClick={copyPublicKey}
-                  title="Copy public key to clipboard"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    padding: '2px 6px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '12px'
-                  }}
-                >
-                  {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => setDisplayFormat(displayFormat === 'base36' ? 'words' : 'base36')}
+                    title="Toggle display format"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    {displayFormat === 'base36' ? 'Words' : 'Base36'}
+                  </button>
+                  <button
+                    onClick={copyPublicKey}
+                    title="Copy public key to clipboard"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '12px'
+                    }}
+                  >
+                    {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
               </div>
               {displayFormat === 'words' && publicKeyWords ? (
                 <div style={{ fontSize: '12px', lineHeight: '1.6' }}>
