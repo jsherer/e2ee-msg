@@ -383,14 +383,42 @@ const App: React.FC = () => {
           </button>
 
           {waitingForMasterKey && (
-            <p style={{ 
-              fontSize: '12px', 
-              color: '#ff9800',
-              margin: '15px 0 0 0',
-              textAlign: 'center'
-            }}>
-              📋 Encrypted key found in URL. Enter your master key to restore.
-            </p>
+            <>
+              <p style={{ 
+                fontSize: '12px', 
+                color: '#ff9800',
+                margin: '15px 0 0 0',
+                textAlign: 'center'
+              }}>
+                📋 Encrypted key found in URL. Enter your master key to restore.
+              </p>
+              <button
+                onClick={() => {
+                  if (window.confirm('This will clear the encrypted private key from the URL.\n\nYou will get a new keypair and lose access to messages encrypted with the old key.\n\nContinue?')) {
+                    window.location.hash = '';
+                    setWaitingForMasterKey(false);
+                  }
+                }}
+                style={{
+                  background: 'transparent',
+                  color: '#666',
+                  border: 'none',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  marginTop: '8px',
+                  textDecoration: 'underline',
+                  padding: '4px',
+                  transition: 'color 0.2s',
+                  display: 'block',
+                  margin: '8px auto 0',
+                  textAlign: 'center'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.color = '#f44336'}
+                onMouseOut={(e) => e.currentTarget.style.color = '#666'}
+              >
+                (Need a fresh start?)
+              </button>
+            </>
           )}
           
           {!waitingForMasterKey && (
