@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import * as nacl from 'tweetnacl';
 import { IconRefresh, IconCopy, IconCheck } from '@tabler/icons-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { uint8ArrayToWords, wordsToUint8Array, formatWords, isBIP39Format } from './bip39';
 
 const App: React.FC = () => {
@@ -19,7 +20,7 @@ const App: React.FC = () => {
   const [copiedEncryptedKey, setCopiedEncryptedKey] = useState(false);
   const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
   const [nonceCounter, setNonceCounter] = useState(0);
-  const [displayFormat, setDisplayFormat] = useState<'base36' | 'words'>('base36');
+  const [displayFormat, setDisplayFormat] = useState<'base36' | 'words' | 'qr'>('base36');
 
   const uint8ArrayToBase36 = (arr: Uint8Array): string => {
     let bigInt = BigInt(0);
@@ -146,7 +147,49 @@ const App: React.FC = () => {
   }, [keypair]);
 
   const copyPublicKey = async () => {
-    if (displayFormat === 'words' && publicKeyWords) {
+    if (displayFormat === 'qr' && keypairDisplay) {
+      // Copy QR code as image
+      try {
+        const svg = document.querySelector('#public-key-qr') as SVGElement;
+        if (svg) {
+          // Convert SVG to blob
+          const svgData = new XMLSerializer().serializeToString(svg);
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const img = new Image();
+          
+          img.onload = async () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx?.drawImage(img, 0, 0);
+            
+            canvas.toBlob(async (blob) => {
+              if (blob) {
+                try {
+                  await navigator.clipboard.write([
+                    new ClipboardItem({ 'image/png': blob })
+                  ]);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                } catch (err) {
+                  // Fallback to copying text if image copy fails
+                  await navigator.clipboard.writeText(keypairDisplay.publicKey);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
+              }
+            }, 'image/png');
+          };
+          
+          img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+        }
+      } catch (err) {
+        // Fallback to text copy
+        await navigator.clipboard.writeText(keypairDisplay.publicKey);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } else if (displayFormat === 'words' && publicKeyWords) {
       await navigator.clipboard.writeText(publicKeyWords.replace(/\n/g, ' '));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -601,7 +644,11 @@ const App: React.FC = () => {
                 <strong>Public Key (Share with your recipient):</strong>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button
-                    onClick={() => setDisplayFormat(displayFormat === 'base36' ? 'words' : 'base36')}
+                    onClick={() => {
+                      if (displayFormat === 'base36') setDisplayFormat('words');
+                      else if (displayFormat === 'words') setDisplayFormat('qr');
+                      else setDisplayFormat('base36');
+                    }}
                     title="Toggle display format"
                     style={{
                       background: 'transparent',
@@ -612,7 +659,7 @@ const App: React.FC = () => {
                       fontSize: '12px'
                     }}
                   >
-                    {displayFormat === 'base36' ? 'Words' : 'Base36'}
+                    {displayFormat === 'base36' ? 'Base36' : displayFormat === 'words' ? 'Words' : 'QR'}
                   </button>
                   <button
                     onClick={copyPublicKey}
@@ -637,6 +684,22 @@ const App: React.FC = () => {
               {displayFormat === 'words' && publicKeyWords ? (
                 <div style={{ fontSize: '12px', lineHeight: '1.6' }}>
                   {publicKeyWords}
+                </div>
+              ) : displayFormat === 'qr' && keypairDisplay ? (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  padding: '10px 0',
+                  backgroundColor: 'white',
+                  borderRadius: '4px'
+                }}>
+                  <QRCodeSVG 
+                    id="public-key-qr"
+                    value={keypairDisplay.publicKey.replace(/\s/g, '')} 
+                    size={160}
+                    level="M"
+                    includeMargin={true}
+                  />
                 </div>
               ) : (
                 keypairDisplay.publicKey
