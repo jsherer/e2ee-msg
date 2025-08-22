@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 // First, create the standalone HTML by combining index.html and bundle.js
 const distDir = path.join(__dirname, '..', 'dist');
@@ -15,47 +16,62 @@ const standaloneHtml = indexHtml.replace(
 // Write standalone HTML
 fs.writeFileSync(path.join(distDir, 'standalone.html'), standaloneHtml);
 
-// Read the standalone HTML file for data URI conversion
+// Try different compression methods for data URI
 const htmlContent = standaloneHtml;
 
-// Convert to base64
-const base64 = Buffer.from(htmlContent).toString('base64');
+// Aggressive minification first
+const minifiedHtml = htmlContent
+    .replace(/\n/g, '')           // Remove newlines
+    .replace(/\s+/g, ' ')         // Collapse whitespace
+    .replace(/> </g, '><')        // Remove spaces between tags
+    .replace(/<!--.*?-->/g, '')   // Remove comments
+    .replace(/;\s*}/g, '}')       // Remove trailing semicolons before }
+    .replace(/{\s+/g, '{')        // Remove space after {
+    .replace(/}\s+/g, '}')        // Remove space after }
+    .replace(/:\s+/g, ':')        // Remove space after :
+    .replace(/,\s+/g, ',')        // Remove space after ,
+    .trim();
 
-// Create data URI
+// Method 1: Regular base64 (no compression)
+const base64 = Buffer.from(htmlContent).toString('base64');
 const dataUri = `data:text/html;base64,${base64}`;
 
-// Write to file
-fs.writeFileSync(path.join(distDir, 'datauri.txt'), dataUri);
+// Method 2: URL-safe characters (percent encoding)
+const percentEncoded = encodeURIComponent(htmlContent);
+const dataUriPercent = `data:text/html;charset=utf-8,${percentEncoded}`;
 
-// Also create a small HTML file that redirects to the data URI for testing
-const redirectHtml = `<!DOCTYPE html>
-<html>
-<head>
-    <title>E2EE Messenger Launcher</title>
-</head>
-<body>
-    <h3>E2EE Local Messenger - Data URI Version</h3>
-    <p>Click the link below to launch the app from a data URI:</p>
-    <a href="${dataUri}">Launch E2EE Messenger</a>
-    <br><br>
-    <details>
-        <summary>Data URI (click to show)</summary>
-        <textarea readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 10px;">${dataUri}</textarea>
-    </details>
-    <br>
-    <p style="color: #666; font-size: 12px;">
-        Note: The data URI is ${(dataUri.length / 1024).toFixed(1)} KB (base64 encoded).<br>
-        You can bookmark the data URI link or save it as a file.
-    </p>
-</body>
-</html>`;
+// Method 3: Minified + base64
+const minifiedBase64 = Buffer.from(minifiedHtml).toString('base64');
+const dataUriMinified = `data:text/html;base64,${minifiedBase64}`;
 
-fs.writeFileSync(path.join(distDir, 'launcher.html'), redirectHtml);
+// Method 4: Minified + percent encoding (often smallest)
+const percentEncodedMin = encodeURIComponent(minifiedHtml);
+const dataUriPercentMin = `data:text/html;charset=utf-8,${percentEncodedMin}`;
 
-console.log(`✅ Created data URI files:`);
-console.log(`   - dist/standalone.html (${(standaloneHtml.length / 1024).toFixed(1)} KB) - single HTML with embedded JS`);
-console.log(`   - dist/datauri.txt (${(dataUri.length / 1024).toFixed(1)} KB) - base64 data URI`);
-console.log(`   - dist/launcher.html - test page with clickable link`);
-console.log(`\n📋 The data URI has been saved to dist/datauri.txt`);
-console.log(`🚀 Open dist/launcher.html in a browser to test the data URI`);
-console.log(`\n💡 You can also open dist/standalone.html directly as a single file app`);
+// Compare all versions to find the smallest
+const versions = [
+    { uri: dataUri, type: 'base64' },
+    { uri: dataUriPercent, type: 'percent-encoded' },
+    { uri: dataUriMinified, type: 'minified+base64' },
+    { uri: dataUriPercentMin, type: 'minified+percent' }
+];
+
+// Find the smallest
+let smallest = versions[0];
+for (const v of versions) {
+    if (v.uri.length < smallest.uri.length) {
+        smallest = v;
+    }
+}
+
+// Write the smallest version
+fs.writeFileSync(path.join(distDir, 'datauri.txt'), smallest.uri);
+
+console.log(`✅ Created files:`);
+console.log(`   - dist/standalone.html (${(standaloneHtml.length / 1024).toFixed(1)} KB)`);
+console.log(`\n📊 Data URI comparison:`);
+console.log(`   - Base64: ${(dataUri.length / 1024).toFixed(1)} KB`);
+console.log(`   - Percent-encoded: ${(dataUriPercent.length / 1024).toFixed(1)} KB`);
+console.log(`   - Minified+Base64: ${(dataUriMinified.length / 1024).toFixed(1)} KB`);
+console.log(`   - Minified+Percent: ${(dataUriPercentMin.length / 1024).toFixed(1)} KB`);
+console.log(`\n✨ Using ${smallest.type}: ${(smallest.uri.length / 1024).toFixed(1)} KB (saved to datauri.txt)`);

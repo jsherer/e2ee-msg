@@ -24,12 +24,15 @@ Serverless end-to-end encrypted messaging that runs entirely in your browser. Sh
 npm install
 npm run build              # Standard build
 npm run build:standalone   # Single HTML file + data URI
+npm run build:compressed   # LZ-compressed version (smaller)
 ```
 
 ### Output Files
-- `dist/bundle.js` - Compiled JavaScript
-- `dist/standalone.html` - Everything in one HTML file  
-- `dist/datauri.txt` - Base64 data URI (bookmarkable)
+- `dist/bundle.js` - Compiled JavaScript (205KB minified)
+- `dist/standalone.html` - Single HTML file with embedded JS (206KB)
+- `dist/ultra.html` - LZ-compressed single file (135KB, 35% smaller)
+- `dist/datauri.txt` - Base64 data URI (274KB - too large for browsers)
+- `dist/datauri-ultra.txt` - Compressed data URI (139KB - still too large)
 
 
 ## Key Formats
