@@ -4,7 +4,8 @@
   "description": "End-to-end encryption local messenger",
   "scripts": {
     "build": "esbuild src/index.tsx --bundle --minify --outfile=dist/bundle.js",
-    "build:watch": "esbuild src/index.tsx --bundle --outfile=dist/bundle.js --watch"
+    "build:watch": "esbuild src/index.tsx --bundle --outfile=dist/bundle.js --watch",
+    "build:standalone": "npm run build && node tools/create-datauri.js"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
