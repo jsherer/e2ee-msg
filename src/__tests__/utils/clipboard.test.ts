@@ -1,8 +1,17 @@
 import { copyTextToClipboard, copyImageToClipboard } from '../../utils/clipboard';
 
 describe('clipboard utilities', () => {
+  let consoleErrorSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    // Silence console.error for expected errors
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    // Restore console.error
+    consoleErrorSpy.mockRestore();
   });
 
   describe('copyTextToClipboard', () => {
