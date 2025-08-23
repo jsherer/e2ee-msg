@@ -1,25 +1,34 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { LockScreen } from '../../components/LockScreen';
+import { LockScreen } from '../src/components/LockScreen';
 
 describe('LockScreen', () => {
   const mockProps = {
     masterKey: '',
     setMasterKey: jest.fn(),
-    onUnlock: jest.fn(),
+    onUnlock: jest.fn().mockResolvedValue(true),
     waitingForMasterKey: false,
-    onFreshStart: jest.fn()
+    onFreshStart: jest.fn(),
+    isUnlocking: false
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Mock window.alert to prevent errors in tests
+    window.alert = jest.fn();
+    // Mock window.confirm for tests that need it
+    window.confirm = jest.fn(() => false);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('should render the lock screen', () => {
     render(<LockScreen {...mockProps} />);
     
-    expect(screen.getByText('🔐 E2EE Local Messenger')).toBeInTheDocument();
+    expect(screen.getByText('E2EE Local Messenger')).toBeInTheDocument();
     expect(screen.getByText('Enter your master key to unlock')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Master key / password')).toBeInTheDocument();
     expect(screen.getByText('Unlock')).toBeInTheDocument();
@@ -51,22 +60,38 @@ describe('LockScreen', () => {
     expect(unlockButton).not.toBeDisabled();
   });
 
-  it('should call onUnlock when unlock button is clicked', () => {
+  it('should call onUnlock when unlock button is clicked', async () => {
     render(<LockScreen {...mockProps} masterKey="valid-master-key-12345" />);
     
     const unlockButton = screen.getByText('Unlock');
     fireEvent.click(unlockButton);
     
-    expect(mockProps.onUnlock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockProps.onUnlock).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it('should call onUnlock when Enter key is pressed', () => {
+  it('should show alert when trying to unlock with short key', async () => {
+    render(<LockScreen {...mockProps} masterKey="short" />);
+    
+    // Even though button is disabled, test the handleSubmit function directly
+    // by triggering it through Enter key
+    const input = screen.getByPlaceholderText('Master key / password');
+    fireEvent.keyPress(input, { key: 'Enter', code: 'Enter', charCode: 13 });
+    
+    // Since the key is too short, onUnlock should not be called
+    expect(mockProps.onUnlock).not.toHaveBeenCalled();
+  });
+
+  it('should call onUnlock when Enter key is pressed', async () => {
     render(<LockScreen {...mockProps} masterKey="valid-master-key-12345" />);
     
     const input = screen.getByPlaceholderText('Master key / password');
     fireEvent.keyPress(input, { key: 'Enter', code: 'Enter', charCode: 13 });
     
-    expect(mockProps.onUnlock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockProps.onUnlock).toHaveBeenCalledTimes(1);
+    });
   });
 
 

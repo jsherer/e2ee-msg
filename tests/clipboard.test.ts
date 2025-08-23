@@ -1,4 +1,4 @@
-import { copyTextToClipboard, copyImageToClipboard } from '../../utils/clipboard';
+import { copyTextToClipboard, copyImageToClipboard } from '../src/utils/clipboard';
 
 describe('clipboard utilities', () => {
   let consoleErrorSpy: jest.SpyInstance;

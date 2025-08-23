@@ -93,7 +93,7 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
             {'\n\n'}
           </>
         )}
-        <strong>Private Key (Encrypted):</strong> {encryptedPrivateKey.replace(/[0-9A-Za-z\.]/g, "•") || 'Generating...'}
+        <strong>Private Key (Encrypted):</strong> {encryptedPrivateKey?.replace(/[0-9A-Za-z\.]/g, "•") || 'Generating...'}
         {'\n\n'}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <strong>Public Key:</strong>

@@ -1,8 +1,8 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
-  roots: ['<rootDir>/src'],
-  testMatch: ['**/__tests__/**/*.test.{ts,tsx}'],
+  roots: ['<rootDir>/tests', '<rootDir>/src'],
+  testMatch: ['**/tests/**/*.test.{ts,tsx}'],
   transform: {
     '^.+\\.tsx?$': 'ts-jest',
   },

@@ -7,7 +7,7 @@ import {
   decryptSecretKey,
   encryptMessage,
   decryptMessage
-} from '../../utils/crypto';
+} from '../src/utils/crypto';
 
 describe('crypto utilities', () => {
   describe('generateKeyPair', () => {

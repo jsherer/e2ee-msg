@@ -10,13 +10,13 @@ import {
   encryptSecretKey,
   decryptSecretKey,
   generateKeyPairFromSecretKey
-} from '../../utils/crypto';
+} from '../src/utils/crypto';
 import {
   uint8ArrayToBase32Crockford,
   base32CrockfordToUint8Array,
   formatInGroups
-} from '../../utils/encoding';
-import { uint8ArrayToWords, wordsToUint8Array } from '../../utils/bip39';
+} from '../src/utils/encoding';
+import { uint8ArrayToWords, wordsToUint8Array } from '../src/utils/bip39';
 
 describe('End-to-End Encryption Integration', () => {
   describe('Complete message exchange flow', () => {

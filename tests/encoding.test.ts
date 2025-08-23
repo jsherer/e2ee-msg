@@ -3,7 +3,7 @@ import {
   base32CrockfordToUint8Array,
   formatInGroups,
   generateUserId
-} from '../../utils/encoding';
+} from '../src/utils/encoding';
 
 describe('encoding utilities', () => {
   describe('uint8ArrayToBase32Crockford', () => {

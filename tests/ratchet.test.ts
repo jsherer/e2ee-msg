@@ -9,8 +9,8 @@ import {
   serializeRatchetState,
   deserializeRatchetState,
   getRatchetStorageKey
-} from '../../utils/ratchet';
-import { generateKeyPair } from '../../utils/crypto';
+} from '../src/utils/ratchet';
+import { generateKeyPair } from '../src/utils/crypto';
 import * as nacl from 'tweetnacl';
 
 describe('Double Ratchet Protocol', () => {
