@@ -36,22 +36,6 @@ export const useKeyManagement = () => {
   const [isSavingKeys, setIsSavingKeys] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
 
-  const generateNewKeypair = async (showLoading = false) => {
-    const pair = generateKeyPair();
-    
-    setKeypair(pair);
-    
-    const publicKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
-    const secretKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
-    
-    setKeypairDisplay({
-      publicKey: publicKeyBase32,
-      secretKey: secretKeyBase32
-    });
-    
-    return pair;
-  };
-
   const saveKeysToUrl = useCallback(async (pair: KeyPair, passphrase: string) => {
     setIsSavingKeys(true);
     try {
@@ -94,6 +78,27 @@ export const useKeyManagement = () => {
       setIsSavingKeys(false);
     }
   }, []);
+
+  const generateNewKeypair = useCallback(async () => {
+    const pair = generateKeyPair();
+    
+    setKeypair(pair);
+    
+    const publicKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
+    const secretKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
+    
+    setKeypairDisplay({
+      publicKey: publicKeyBase32,
+      secretKey: secretKeyBase32
+    });
+    
+    // Save to URL if we have a master key (regeneration case)
+    if (masterKey && masterKeyLocked) {
+      await saveKeysToUrl(pair, masterKey);
+    }
+    
+    return pair;
+  }, [masterKey, masterKeyLocked, saveKeysToUrl]);
 
   const tryRestoreFromFragment = useCallback(async (passphrase: string): Promise<boolean> => {
     try {
@@ -258,12 +263,12 @@ export const useKeyManagement = () => {
     }
   }, []);
 
-  // Update URL when keys change (if we have a master key)
-  useEffect(() => {
-    if (keypair && masterKey && masterKeyLocked) {
-      saveKeysToUrl(keypair, masterKey);
-    }
-  }, [keypair, masterKey, masterKeyLocked, saveKeysToUrl]);
+  // Note: We don't need to constantly update the URL fragment.
+  // It's only updated when:
+  // 1. Keys are initially generated (in handleMasterKeySubmit)
+  // 2. Keys are regenerated (in generateNewKeypair, called explicitly)
+  // 3. On lock (for nonce rotation)
+  // 4. On unlock (for nonce rotation)
 
   const incrementNonceCounter = () => {
     setNonceCounter(prev => prev + 1);

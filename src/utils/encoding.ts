@@ -115,8 +115,18 @@ export function base32CrockfordToBuffer(s: string): Buffer {
 }
 
 // ---------- Utility functions ----------
-export const formatInGroups = (str: string): string => {
-  return str.match(/.{1,5}/g)?.join(' ') || str;
+export const formatInGroups = (str: string, addNewlines: boolean = false): string => {
+  const groups = str.match(/.{1,5}/g) || [str];
+  if (!addNewlines) {
+    return groups.join(' ');
+  }
+  
+  // Add newlines every 5 groups (25 characters)
+  const lines: string[] = [];
+  for (let i = 0; i < groups.length; i += 5) {
+    lines.push(groups.slice(i, i + 5).join(' '));
+  }
+  return lines.join('\n');
 };
 
 export const generateUserId = (publicKey: Uint8Array): string => {

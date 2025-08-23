@@ -105,6 +105,24 @@ describe('encoding utilities', () => {
       const result = formatInGroups(input);
       expect(result).toBe('abcde fghij');
     });
+
+    it('should add newlines every 5 groups when addNewlines is true', () => {
+      const input = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJK';
+      const result = formatInGroups(input, true);
+      expect(result).toBe('abcde fghij klmno pqrst uvwxy\nz0123 45678 9ABCD EFGHI JK');
+    });
+
+    it('should format with newlines for exactly 25 chars', () => {
+      const input = 'abcdefghijklmnopqrstuvwxy';
+      const result = formatInGroups(input, true);
+      expect(result).toBe('abcde fghij klmno pqrst uvwxy');
+    });
+
+    it('should handle short string with newlines flag', () => {
+      const input = 'abc';
+      const result = formatInGroups(input, true);
+      expect(result).toBe('abc');
+    });
   });
 
   describe('generateUserId', () => {

@@ -131,7 +131,12 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
           </div>
         </div>
         {displayFormat === 'words' && publicKeyWords ? (
-          <div style={{ fontSize: '12px', lineHeight: '1.6' }}>
+          <div style={{ 
+            fontSize: '12px', 
+            lineHeight: '1.6',
+            fontFamily: 'monospace',
+            textTransform: 'uppercase'
+          }}>
             {publicKeyWords}
           </div>
         ) : displayFormat === 'qr' && keypairDisplay ? (
@@ -151,7 +156,9 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
             />
           </div>
         ) : (
-          keypairDisplay?.publicKey || 'Generating...'
+          <div style={{ fontFamily: 'monospace', fontSize: '13px' }}>
+            {keypairDisplay?.publicKey || 'Generating...'}
+          </div>
         )}
       </div>
     </div>

@@ -71,7 +71,7 @@ const App: React.FC = () => {
     if (!keypair) return null;
     try {
       const words = uint8ArrayToWords(keypair.publicKey);
-      return formatWords(words, 6);
+      return formatWords(words, 4);
     } catch (error) {
       console.error('Failed to convert to words:', error);
       return null;
@@ -190,12 +190,6 @@ const App: React.FC = () => {
               ratchetInitialized={ratchetInitialized}
             />
 
-            <OutputCard
-              output={output}
-              copiedOutput={copiedOutput}
-              onCopyOutput={copyOutput}
-            />
-
             {useRatchet && (
               <RatchetVisualizer
                 currentSession={ratchetSession}
@@ -206,6 +200,12 @@ const App: React.FC = () => {
                 onClearAll={clearAllSessions}
               />
             )}
+
+            <OutputCard
+              output={output}
+              copiedOutput={copiedOutput}
+              onCopyOutput={copyOutput}
+            />
           </>
         )}
 

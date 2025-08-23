@@ -70,7 +70,7 @@ export const useCrypto = (
         encrypted = encryptMessage(message, recipientKey, keypair.secretKey);
       }
       
-      const formattedOutput = formatInGroups(uint8ArrayToBase32Crockford(encrypted));
+      const formattedOutput = formatInGroups(uint8ArrayToBase32Crockford(encrypted), true);
       setOutput(`Encrypted:\n${formattedOutput}`);
       
       // Re-encrypt private key with new nonce
