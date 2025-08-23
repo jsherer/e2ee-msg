@@ -34,8 +34,8 @@ export const generateUserId = (publicKey: Uint8Array): string => {
   const nacl = require('tweetnacl');
   const hash = nacl.hash(publicKey);
   const idBytes = hash.slice(0, 8);
-  const hexId = Array.from(idBytes)
-    .map((b: number) => b.toString(16).padStart(2, '0'))
+  const hexId = Array.from(idBytes as Uint8Array)
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
   return hexId.match(/.{1,4}/g)?.join('-') || hexId;
 };

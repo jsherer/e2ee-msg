@@ -19,7 +19,9 @@ export const generateKeyPairFromSecretKey = (secretKey: Uint8Array): KeyPair => 
 
 export const deriveKeyFromMasterKey = (masterKey: string): Uint8Array => {
   const masterKeyBytes = new TextEncoder().encode(masterKey);
-  return nacl.hash(masterKeyBytes).slice(0, nacl.secretbox.keyLength);
+  // Ensure it's a real Uint8Array (not a Node Buffer)
+  const bytes = new Uint8Array(masterKeyBytes);
+  return nacl.hash(bytes).slice(0, nacl.secretbox.keyLength);
 };
 
 export const encryptSecretKey = (secretKey: Uint8Array, masterKey: string): Uint8Array => {
@@ -49,7 +51,9 @@ export const encryptMessage = (
   senderSecretKey: Uint8Array
 ): Uint8Array => {
   const nonce = nacl.randomBytes(nacl.box.nonceLength);
-  const messageUint8 = new TextEncoder().encode(message);
+  const messageBytes = new TextEncoder().encode(message);
+  // Ensure it's a real Uint8Array (not a Node Buffer)
+  const messageUint8 = new Uint8Array(messageBytes);
   const encrypted = nacl.box(messageUint8, nonce, recipientPublicKey, senderSecretKey);
   
   const fullMessage = new Uint8Array(nonce.length + encrypted.length);
