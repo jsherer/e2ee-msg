@@ -12,8 +12,8 @@ import {
   generateKeyPairFromSecretKey
 } from '../../utils/crypto';
 import {
-  uint8ArrayToBase36,
-  base36ToUint8Array,
+  uint8ArrayToBase32Crockford,
+  base32CrockfordToUint8Array,
   formatInGroups
 } from '../../utils/encoding';
 import { uint8ArrayToWords, wordsToUint8Array } from '../../utils/bip39';
@@ -26,24 +26,24 @@ describe('End-to-End Encryption Integration', () => {
       const bob = generateKeyPair();
 
       // Step 2: They exchange public keys (simulating base36 format)
-      const alicePublicKeyBase36 = formatInGroups(uint8ArrayToBase36(alice.publicKey));
-      const bobPublicKeyBase36 = formatInGroups(uint8ArrayToBase36(bob.publicKey));
+      const alicePublicKeyBase36 = formatInGroups(uint8ArrayToBase32Crockford(alice.publicKey));
+      const bobPublicKeyBase36 = formatInGroups(uint8ArrayToBase32Crockford(bob.publicKey));
 
       // Step 3: Alice sends an encrypted message to Bob
       const aliceMessage = 'Hello Bob! This is a secret message. 🔐';
       
       // Alice gets Bob's public key from base36 format
-      const bobPublicKeyRestored = base36ToUint8Array(bobPublicKeyBase36.replace(/\s/g, ''), 32);
+      const bobPublicKeyRestored = base32CrockfordToUint8Array(bobPublicKeyBase36.replace(/\s/g, ''));
       
       // Alice encrypts the message
       const encryptedByAlice = encryptMessage(aliceMessage, bobPublicKeyRestored, alice.secretKey);
       
       // Convert to base36 for transmission
-      const encryptedBase36 = formatInGroups(uint8ArrayToBase36(encryptedByAlice));
+      const encryptedBase36 = formatInGroups(uint8ArrayToBase32Crockford(encryptedByAlice));
 
       // Step 4: Bob receives and decrypts the message
-      const encryptedReceived = base36ToUint8Array(encryptedBase36.replace(/\s/g, ''));
-      const alicePublicKeyRestored = base36ToUint8Array(alicePublicKeyBase36.replace(/\s/g, ''), 32);
+      const encryptedReceived = base32CrockfordToUint8Array(encryptedBase36.replace(/\s/g, ''));
+      const alicePublicKeyRestored = base32CrockfordToUint8Array(alicePublicKeyBase36.replace(/\s/g, ''));
       
       const decryptedByBob = decryptMessage(encryptedReceived, alicePublicKeyRestored, bob.secretKey);
       
@@ -53,10 +53,10 @@ describe('End-to-End Encryption Integration', () => {
       const bobMessage = 'Hi Alice! Got your message. Here\'s my reply. 🔒';
       
       const encryptedByBob = encryptMessage(bobMessage, alicePublicKeyRestored, bob.secretKey);
-      const replyBase36 = formatInGroups(uint8ArrayToBase36(encryptedByBob));
+      const replyBase36 = formatInGroups(uint8ArrayToBase32Crockford(encryptedByBob));
       
       // Step 6: Alice decrypts Bob's reply
-      const replyReceived = base36ToUint8Array(replyBase36.replace(/\s/g, ''));
+      const replyReceived = base32CrockfordToUint8Array(replyBase36.replace(/\s/g, ''));
       const decryptedByAlice = decryptMessage(replyReceived, bobPublicKeyRestored, alice.secretKey);
       
       expect(decryptedByAlice).toBe(bobMessage);
@@ -120,10 +120,10 @@ describe('End-to-End Encryption Integration', () => {
       const encryptedPrivateKey = encryptSecretKey(keypair.secretKey, masterKey);
       
       // Convert to base36 for URL storage
-      const storageFormat = uint8ArrayToBase36(encryptedPrivateKey);
+      const storageFormat = uint8ArrayToBase32Crockford(encryptedPrivateKey);
       
       // Later: Restore from storage
-      const restoredEncrypted = base36ToUint8Array(storageFormat);
+      const restoredEncrypted = base32CrockfordToUint8Array(storageFormat);
       const restoredSecretKey = decryptSecretKey(restoredEncrypted, masterKey);
       
       expect(restoredSecretKey).toEqual(keypair.secretKey);
@@ -146,40 +146,40 @@ describe('End-to-End Encryption Integration', () => {
       
       // 2. Alice's private key is encrypted and stored
       const aliceEncryptedKey = encryptSecretKey(aliceKeypair.secretKey, aliceMasterKey);
-      const aliceStoredKey = uint8ArrayToBase36(aliceEncryptedKey);
+      const aliceStoredKey = uint8ArrayToBase32Crockford(aliceEncryptedKey);
       
       // 3. Bob does the same
       const bobMasterKey = 'bob-master-password-456';
       const bobKeypair = generateKeyPair();
       const bobEncryptedKey = encryptSecretKey(bobKeypair.secretKey, bobMasterKey);
-      const bobStoredKey = uint8ArrayToBase36(bobEncryptedKey);
+      const bobStoredKey = uint8ArrayToBase32Crockford(bobEncryptedKey);
       
       // 4. They exchange public keys (as base36)
-      const alicePublicKeyShared = formatInGroups(uint8ArrayToBase36(aliceKeypair.publicKey));
-      const bobPublicKeyShared = formatInGroups(uint8ArrayToBase36(bobKeypair.publicKey));
+      const alicePublicKeyShared = formatInGroups(uint8ArrayToBase32Crockford(aliceKeypair.publicKey));
+      const bobPublicKeyShared = formatInGroups(uint8ArrayToBase32Crockford(bobKeypair.publicKey));
       
       // 5. Alice restores her key and sends a message
       const aliceRestoredSecret = decryptSecretKey(
-        base36ToUint8Array(aliceStoredKey),
+        base32CrockfordToUint8Array(aliceStoredKey),
         aliceMasterKey
       );
       const aliceRestored = generateKeyPairFromSecretKey(aliceRestoredSecret!);
       
       const message = 'Complete flow test message with emojis! 🎉🔐💬';
-      const bobKeyForAlice = base36ToUint8Array(bobPublicKeyShared.replace(/\s/g, ''), 32);
+      const bobKeyForAlice = base32CrockfordToUint8Array(bobPublicKeyShared.replace(/\s/g, ''));
       
       const encrypted = encryptMessage(message, bobKeyForAlice, aliceRestored.secretKey);
-      const transmittedMessage = formatInGroups(uint8ArrayToBase36(encrypted));
+      const transmittedMessage = formatInGroups(uint8ArrayToBase32Crockford(encrypted));
       
       // 6. Bob restores his key and decrypts
       const bobRestoredSecret = decryptSecretKey(
-        base36ToUint8Array(bobStoredKey),
+        base32CrockfordToUint8Array(bobStoredKey),
         bobMasterKey
       );
       const bobRestored = generateKeyPairFromSecretKey(bobRestoredSecret!);
       
-      const receivedEncrypted = base36ToUint8Array(transmittedMessage.replace(/\s/g, ''));
-      const aliceKeyForBob = base36ToUint8Array(alicePublicKeyShared.replace(/\s/g, ''), 32);
+      const receivedEncrypted = base32CrockfordToUint8Array(transmittedMessage.replace(/\s/g, ''));
+      const aliceKeyForBob = base32CrockfordToUint8Array(alicePublicKeyShared.replace(/\s/g, ''));
       
       const decrypted = decryptMessage(receivedEncrypted, aliceKeyForBob, bobRestored.secretKey);
       

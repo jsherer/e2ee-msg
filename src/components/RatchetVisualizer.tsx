@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { RatchetState, RatchetOperation } from '../types/ratchet';
-import { uint8ArrayToBase36 } from '../utils/encoding';
+import { uint8ArrayToBase32Crockford } from '../utils/encoding';
 
 interface RatchetVisualizerProps {
   currentSession: RatchetState | null;
@@ -28,8 +28,8 @@ export const RatchetVisualizer: React.FC<RatchetVisualizerProps> = ({
 
   const formatKey = (key: Uint8Array | null): string => {
     if (!key) return 'none';
-    const base36 = uint8ArrayToBase36(key);
-    return `${base36.slice(0, 5)}...${base36.slice(-5)}`;
+    const base32 = uint8ArrayToBase32Crockford(key);
+    return `${base32.slice(0, 5)}...${base32.slice(-5)}`;
   };
 
   const formatTimestamp = (timestamp: number): string => {

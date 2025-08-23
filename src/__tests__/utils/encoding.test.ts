@@ -1,55 +1,59 @@
 import {
-  uint8ArrayToBase36,
-  base36ToUint8Array,
+  uint8ArrayToBase32Crockford,
+  base32CrockfordToUint8Array,
   formatInGroups,
   generateUserId
 } from '../../utils/encoding';
 
 describe('encoding utilities', () => {
-  describe('uint8ArrayToBase36', () => {
-    it('should convert a Uint8Array to base36 string', () => {
+  describe('uint8ArrayToBase32Crockford', () => {
+    it('should convert a Uint8Array to base32 Crockford string', () => {
       const input = new Uint8Array([0, 1, 2, 3, 4]);
-      const result = uint8ArrayToBase36(input);
-      expect(result).toBe('a2f44');
+      const result = uint8ArrayToBase32Crockford(input);
+      expect(result).toBe('000G40R4');
     });
 
     it('should handle empty array', () => {
       const input = new Uint8Array([]);
-      const result = uint8ArrayToBase36(input);
-      expect(result).toBe('0');
+      const result = uint8ArrayToBase32Crockford(input);
+      expect(result).toBe('');
     });
 
     it('should handle all zeros', () => {
       const input = new Uint8Array([0, 0, 0, 0]);
-      const result = uint8ArrayToBase36(input);
-      expect(result).toBe('0');
+      const result = uint8ArrayToBase32Crockford(input);
+      expect(result).toBe('0000000');
     });
 
     it('should handle max values', () => {
       const input = new Uint8Array([255, 255, 255, 255]);
-      const result = uint8ArrayToBase36(input);
-      expect(result).toBe('1z141z3');
+      const result = uint8ArrayToBase32Crockford(input);
+      expect(result).toBe('ZZZZZZR');
     });
   });
 
-  describe('base36ToUint8Array', () => {
-    it('should convert base36 string back to Uint8Array', () => {
-      const input = 'a2f44';
-      const result = base36ToUint8Array(input, 5);
+  describe('base32CrockfordToUint8Array', () => {
+    it('should convert base32 Crockford string back to Uint8Array', () => {
+      const input = '000G40R4';
+      const result = base32CrockfordToUint8Array(input);
       expect(result).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
     });
 
     it('should handle strings with spaces', () => {
-      const input = 'a2 f44';  // Same as 'a2f44' but with space
-      const result = base36ToUint8Array(input, 5);
+      const input = '000G 40R4';  // Same as '000G40R4' but with space
+      const result = base32CrockfordToUint8Array(input);
       expect(result).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
     });
 
-    it('should pad to expected length', () => {
-      const input = '1';
-      const result = base36ToUint8Array(input, 4);
-      expect(result.length).toBe(4);
-      expect(result[3]).toBe(1);
+    it('should handle ambiguous characters', () => {
+      // Crockford base32 treats O as 0, I/L as 1
+      const input1 = 'O00G40R4'; // O instead of first 0
+      const result1 = base32CrockfordToUint8Array(input1);
+      expect(result1).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
+      
+      const input2 = '0O0G40R4'; // O instead of second 0
+      const result2 = base32CrockfordToUint8Array(input2);
+      expect(result2).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
     });
   });
 
@@ -58,10 +62,22 @@ describe('encoding utilities', () => {
       const original = new Uint8Array(32);
       crypto.getRandomValues(original);
       
-      const base36 = uint8ArrayToBase36(original);
-      const restored = base36ToUint8Array(base36, 32);
+      const base32 = uint8ArrayToBase32Crockford(original);
+      const restored = base32CrockfordToUint8Array(base32);
       
       expect(restored).toEqual(original);
+    });
+
+    it('should handle various sizes', () => {
+      for (const size of [1, 5, 10, 32, 64, 100]) {
+        const original = new Uint8Array(size);
+        crypto.getRandomValues(original);
+        
+        const base32 = uint8ArrayToBase32Crockford(original);
+        const restored = base32CrockfordToUint8Array(base32);
+        
+        expect(restored).toEqual(original);
+      }
     });
   });
 

@@ -29,7 +29,7 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
   onRegenerate
 }) => {
   const toggleFormat = () => {
-    const formats: DisplayFormat[] = ['base36', 'words', 'qr'];
+    const formats: DisplayFormat[] = ['base32', 'words', 'qr'];
     const currentIndex = formats.indexOf(displayFormat);
     setDisplayFormat(formats[(currentIndex + 1) % 3]);
   };
@@ -109,7 +109,7 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
                 fontSize: '12px'
               }}
             >
-              {displayFormat === 'base36' ? 'Base36' : displayFormat === 'words' ? 'Words' : 'QR'}
+              {displayFormat === 'base32' ? 'Base32' : displayFormat === 'words' ? 'Words' : 'QR'}
             </button>
             <button
               onClick={onCopyPublicKey}

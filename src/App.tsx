@@ -58,7 +58,7 @@ const App: React.FC = () => {
     stopScanner
   } = useQRScanner((data) => setRecipientPublicKey(data));
 
-  const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('base36');
+  const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('base32');
   const [copied, setCopied] = useState(false);
   const [copiedOutput, setCopiedOutput] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);

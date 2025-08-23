@@ -5,7 +5,7 @@
 import { useState, useCallback } from 'react';
 import { KeyPair } from '../types';
 import { encryptMessage, decryptMessage } from '../utils/crypto';
-import { base36ToUint8Array, formatInGroups, uint8ArrayToBase36 } from '../utils/encoding';
+import { base32CrockfordToUint8Array, formatInGroups, uint8ArrayToBase32Crockford } from '../utils/encoding';
 import { isBIP39Format, wordsToUint8Array } from '../utils/bip39';
 import { useRatchet } from './useRatchet';
 
@@ -38,7 +38,7 @@ export const useCrypto = (
       const words = keyString.toLowerCase().trim().split(/\s+/);
       return wordsToUint8Array(words);
     } else {
-      return base36ToUint8Array(keyString, 32);
+      return base32CrockfordToUint8Array(keyString);
     }
   }, []);
 
@@ -70,7 +70,7 @@ export const useCrypto = (
         encrypted = encryptMessage(message, recipientKey, keypair.secretKey);
       }
       
-      const formattedOutput = formatInGroups(uint8ArrayToBase36(encrypted));
+      const formattedOutput = formatInGroups(uint8ArrayToBase32Crockford(encrypted));
       setOutput(`Encrypted:\n${formattedOutput}`);
       
       // Re-encrypt private key with new nonce
@@ -95,7 +95,7 @@ export const useCrypto = (
 
     try {
       const senderKey = parsePublicKey(recipientPublicKey);
-      const encryptedData = base36ToUint8Array(message);
+      const encryptedData = base32CrockfordToUint8Array(message);
       
       // Check if this is a ratchet message (version byte 0x01)
       const isRatchetMessage = encryptedData.length > 0 && encryptedData[0] === 0x01;

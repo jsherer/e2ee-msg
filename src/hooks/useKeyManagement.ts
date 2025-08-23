@@ -11,8 +11,8 @@ import {
   decryptSecretKey
 } from '../utils/crypto';
 import {
-  uint8ArrayToBase36,
-  base36ToUint8Array,
+  uint8ArrayToBase32Crockford,
+  base32CrockfordToUint8Array,
   formatInGroups,
   generateUserId
 } from '../utils/encoding';
@@ -30,8 +30,8 @@ export const useKeyManagement = () => {
     
     setKeypair(pair);
     
-    const publicKeyBase36 = formatInGroups(uint8ArrayToBase36(pair.publicKey));
-    const secretKeyBase36 = formatInGroups(uint8ArrayToBase36(pair.secretKey));
+    const publicKeyBase36 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
+    const secretKeyBase36 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
     
     setKeypairDisplay({
       publicKey: publicKeyBase36,
@@ -41,7 +41,7 @@ export const useKeyManagement = () => {
 
   const tryRestoreFromHash = (hash: string, key: string): boolean => {
     try {
-      const encryptedData = base36ToUint8Array(hash);
+      const encryptedData = base32CrockfordToUint8Array(hash);
       const decrypted = decryptSecretKey(encryptedData, key);
       
       if (decrypted && decrypted.length === 32) {
@@ -49,8 +49,8 @@ export const useKeyManagement = () => {
         
         setKeypair(pair);
         
-        const publicKeyBase36 = formatInGroups(uint8ArrayToBase36(pair.publicKey));
-        const secretKeyBase36 = formatInGroups(uint8ArrayToBase36(pair.secretKey));
+        const publicKeyBase36 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
+        const secretKeyBase36 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
         
         setKeypairDisplay({
           publicKey: publicKeyBase36,
@@ -101,7 +101,7 @@ export const useKeyManagement = () => {
     
     try {
       const encrypted = encryptSecretKey(keypair.secretKey, masterKey);
-      return formatInGroups(uint8ArrayToBase36(encrypted));
+      return formatInGroups(uint8ArrayToBase32Crockford(encrypted));
     } catch (error) {
       console.error('Failed to encrypt private key:', error);
       return null;

@@ -8,7 +8,7 @@ Serverless end-to-end encrypted messaging that runs entirely in your browser. No
 - 🔑 **Master Password Protection** - Private keys encrypted with SHA-512 derived key
 - 🆔 **User ID** - Unique identifier derived from public key hash
 - 📝 **Multiple Key Formats**:
-  - Base36 with 5-character grouping
+  - Base32 (Crockford) with 5-character grouping
   - BIP39 mnemonic words (24 words = 256 bits)
   - QR codes for easy scanning
 - 📸 **QR Code Scanner** - Scan recipient's public key QR code
@@ -59,7 +59,7 @@ npm run build:compressed   # LZ-compressed version (smaller)
 
 ### Sharing Your Public Key
 Choose from three formats:
-- **Base36**: `3jk2l 9xm4p q8r7s...` (compact, easy to type)
+- **Base32**: `3JK2L 9XM4P Q8R7S...` (compact, easy to type)
 - **BIP39 Words**: `abandon ability able...` (24 words, memorable)
 - **QR Code**: Visual format for scanning (supports camera scanning)
 
@@ -101,7 +101,7 @@ src/
 │   └── useQRScanner.ts     # Camera & QR scanning
 ├── utils/
 │   ├── crypto.ts           # TweetNaCl wrappers
-│   ├── encoding.ts         # Base36 conversions
+│   ├── encoding.ts         # Base32 conversions
 │   ├── bip39.ts            # BIP39 word encoding
 │   └── clipboard.ts        # Copy functionality
 └── __tests__/
