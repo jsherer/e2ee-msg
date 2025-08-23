@@ -1,20 +1,17 @@
 import React from 'react';
-import { IconQrcode, IconCopy, IconCheck } from '@tabler/icons-react';
+import { IconQrcode } from '@tabler/icons-react';
 
 interface EncryptDecryptCardProps {
   recipientPublicKey: string;
   setRecipientPublicKey: (key: string) => void;
   message: string;
   setMessage: (msg: string) => void;
-  output: string;
   isEncrypting: boolean;
   isDecrypting: boolean;
   onEncrypt: () => void;
   onDecrypt: () => void;
   hasCamera: boolean | null;
   onOpenScanner: () => void;
-  copiedOutput: boolean;
-  onCopyOutput: () => void;
   useRatchet: boolean;
   onToggleRatchet: () => void;
   ratchetInitialized: boolean;
@@ -25,15 +22,12 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
   setRecipientPublicKey,
   message,
   setMessage,
-  output,
   isEncrypting,
   isDecrypting,
   onEncrypt,
   onDecrypt,
   hasCamera,
   onOpenScanner,
-  copiedOutput,
-  onCopyOutput,
   useRatchet,
   onToggleRatchet,
   ratchetInitialized
@@ -217,58 +211,6 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
           {isDecrypting ? 'Decrypting...' : 'Decrypt'}
         </button>
       </div>
-
-      {output && (
-        <div>
-          <label style={{ 
-            display: 'block', 
-            marginBottom: '8px', 
-            fontSize: '14px', 
-            fontWeight: '500', 
-            color: '#555' 
-          }}>
-            Output:
-          </label>
-          <div style={{
-            backgroundColor: '#fafafa',
-            border: '1px solid #e0e0e0',
-            borderRadius: '6px',
-            padding: '15px',
-            fontFamily: 'monospace',
-            fontSize: '13px',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            position: 'relative'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-              <div style={{ flex: 1 }}>{output}</div>
-              {output !== 'Encrypting...' && output !== 'Decrypting...' && (
-                <button
-                  onClick={onCopyOutput}
-                  title="Copy output to clipboard"
-                  style={{
-                    background: 'white',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '4px',
-                    padding: '4px 8px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '12px',
-                    marginLeft: '10px',
-                    flexShrink: 0,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {copiedOutput ? <IconCheck size={14} /> : <IconCopy size={14} />}
-                  {copiedOutput ? 'Copied!' : 'Copy'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

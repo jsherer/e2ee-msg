@@ -3,6 +3,7 @@ import { LockScreen } from './components/LockScreen';
 import { MasterKeyCard } from './components/MasterKeyCard';
 import { KeysDisplay } from './components/KeysDisplay';
 import { EncryptDecryptCard } from './components/EncryptDecryptCard';
+import { OutputCard } from './components/OutputCard';
 import { QRScannerModal } from './components/QRScannerModal';
 import { RatchetVisualizer } from './components/RatchetVisualizer';
 import { useKeyManagement } from './hooks/useKeyManagement';
@@ -178,18 +179,21 @@ const App: React.FC = () => {
               setRecipientPublicKey={setRecipientPublicKey}
               message={message}
               setMessage={setMessage}
-              output={output}
               isEncrypting={isEncrypting}
               isDecrypting={isDecrypting}
               onEncrypt={handleEncrypt}
               onDecrypt={handleDecrypt}
               hasCamera={hasCamera}
               onOpenScanner={openScanner}
-              copiedOutput={copiedOutput}
-              onCopyOutput={copyOutput}
               useRatchet={useRatchet}
               onToggleRatchet={() => setUseRatchet(!useRatchet)}
               ratchetInitialized={ratchetInitialized}
+            />
+
+            <OutputCard
+              output={output}
+              copiedOutput={copiedOutput}
+              onCopyOutput={copyOutput}
             />
 
             {useRatchet && (
