@@ -25,12 +25,21 @@ describe('LockScreen', () => {
     jest.restoreAllMocks();
   });
 
-  it('should render the lock screen', () => {
+  it('should render the lock screen for first-time users', () => {
     render(<LockScreen {...mockProps} />);
     
     expect(screen.getByText('E2EE Local Messenger')).toBeInTheDocument();
+    expect(screen.getByText('Welcome to secure, local messaging')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Choose a strong master key')).toBeInTheDocument();
+    expect(screen.getByText('Start Secure Session')).toBeInTheDocument();
+  });
+
+  it('should render the lock screen for returning users', () => {
+    render(<LockScreen {...mockProps} waitingForMasterKey={true} />);
+    
+    expect(screen.getByText('E2EE Local Messenger')).toBeInTheDocument();
     expect(screen.getByText('Enter your master key to unlock')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Master key / password')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter your master key')).toBeInTheDocument();
     expect(screen.getByText('Unlock')).toBeInTheDocument();
   });
 
@@ -39,7 +48,7 @@ describe('LockScreen', () => {
     const setMasterKey = jest.fn();
     render(<LockScreen {...mockProps} setMasterKey={setMasterKey} />);
     
-    const input = screen.getByPlaceholderText('Master key / password');
+    const input = screen.getByPlaceholderText('Choose a strong master key');
     await user.type(input, 'test-key');
     
     // UserEvent calls onChange for each character typed
@@ -49,21 +58,21 @@ describe('LockScreen', () => {
   it('should disable unlock button when key is too short', () => {
     render(<LockScreen {...mockProps} masterKey="short" />);
     
-    const unlockButton = screen.getByText('Unlock');
+    const unlockButton = screen.getByText('Start Secure Session');
     expect(unlockButton).toBeDisabled();
   });
 
   it('should enable unlock button when key is long enough', () => {
     render(<LockScreen {...mockProps} masterKey="this-is-long-enough" />);
     
-    const unlockButton = screen.getByText('Unlock');
+    const unlockButton = screen.getByText('Start Secure Session');
     expect(unlockButton).not.toBeDisabled();
   });
 
   it('should call onUnlock when unlock button is clicked', async () => {
     render(<LockScreen {...mockProps} masterKey="valid-master-key-12345" />);
     
-    const unlockButton = screen.getByText('Unlock');
+    const unlockButton = screen.getByText('Start Secure Session');
     fireEvent.click(unlockButton);
     
     await waitFor(() => {
@@ -76,7 +85,7 @@ describe('LockScreen', () => {
     
     // Even though button is disabled, test the handleSubmit function directly
     // by triggering it through Enter key
-    const input = screen.getByPlaceholderText('Master key / password');
+    const input = screen.getByPlaceholderText('Choose a strong master key');
     fireEvent.keyPress(input, { key: 'Enter', code: 'Enter', charCode: 13 });
     
     // Since the key is too short, onUnlock should not be called
@@ -86,7 +95,7 @@ describe('LockScreen', () => {
   it('should call onUnlock when Enter key is pressed', async () => {
     render(<LockScreen {...mockProps} masterKey="valid-master-key-12345" />);
     
-    const input = screen.getByPlaceholderText('Master key / password');
+    const input = screen.getByPlaceholderText('Choose a strong master key');
     fireEvent.keyPress(input, { key: 'Enter', code: 'Enter', charCode: 13 });
     
     await waitFor(() => {

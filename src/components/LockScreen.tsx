@@ -83,21 +83,58 @@ export const LockScreen: React.FC<LockScreenProps> = ({
           </h1>
         </div>
         
-        <p style={{ 
-          textAlign: 'center',
-          color: '#666',
-          marginBottom: '30px',
-          fontSize: '14px'
-        }}>
-          Enter your master key to unlock
-        </p>
+        {!waitingForMasterKey ? (
+          <div style={{
+            marginBottom: '25px'
+          }}>
+            <p style={{ 
+              textAlign: 'center',
+              color: '#333',
+              marginBottom: '10px',
+              fontSize: '15px',
+              fontWeight: '500'
+            }}>
+              Welcome to secure, local messaging
+            </p>
+            <p style={{ 
+              textAlign: 'center',
+              color: '#666',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              marginBottom: '15px'
+            }}>
+              Create a master key to protect your encryption keys.
+              <br />
+              Your messages never leave your device.
+            </p>
+            <div style={{
+              backgroundColor: '#e3f2fd',
+              borderRadius: '6px',
+              padding: '12px',
+              fontSize: '12px',
+              color: '#1565c0',
+              lineHeight: '1.4'
+            }}>
+              <strong>🔑 First time?</strong> We'll generate a unique keypair for you, encrypted with your master key and stored in the URL for easy sharing between sessions.
+            </div>
+          </div>
+        ) : (
+          <p style={{ 
+            textAlign: 'center',
+            color: '#666',
+            marginBottom: '30px',
+            fontSize: '14px'
+          }}>
+            Enter your master key to unlock
+          </p>
+        )}
 
         <input
           type="password"
           value={masterKey}
           onChange={(e) => setMasterKey(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && !isUnlocking && !isUnlocked && handleSubmit()}
-          placeholder="Master key / password"
+          placeholder={waitingForMasterKey ? "Enter your master key" : "Choose a strong master key"}
           autoFocus
           disabled={isUnlocking || isUnlocked}
           style={{
@@ -129,7 +166,9 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             transition: 'background-color 0.2s'
           }}
         >
-          {isUnlocked ? 'Unlocked!' : isUnlocking ? 'Unlocking...' : 'Unlock'}
+          {isUnlocked ? (waitingForMasterKey ? 'Unlocked!' : 'Started!') : 
+           isUnlocking ? (waitingForMasterKey ? 'Unlocking...' : 'Starting...') : 
+           (waitingForMasterKey ? 'Unlock' : 'Start Secure Session')}
         </button>
 
         {waitingForMasterKey && (
@@ -178,9 +217,11 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                 {masterKey.length}/12 characters minimum
               </span>
             ) : masterKey.length >= 12 ? (
-              'This key will encrypt your private keys for security'
+              <span style={{ color: '#4CAF50' }}>
+                ✓ Strong key - ready to start
+              </span>
             ) : (
-              'This key will encrypt your private keys for security'
+              'Use at least 12 characters for security'
             )}
           </p>
         )}
