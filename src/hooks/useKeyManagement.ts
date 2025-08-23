@@ -32,6 +32,9 @@ export const useKeyManagement = () => {
   const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
   const [nonceCounter, setNonceCounter] = useState(0);
   const [lastSeenSeq, setLastSeenSeq] = useState(0);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [isSavingKeys, setIsSavingKeys] = useState(false);
+  const [isLocking, setIsLocking] = useState(false);
 
   const generateNewKeypair = async (showLoading = false) => {
     const pair = generateKeyPair();
@@ -50,6 +53,7 @@ export const useKeyManagement = () => {
   };
 
   const saveKeysToUrl = useCallback(async (pair: KeyPair, passphrase: string) => {
+    setIsSavingKeys(true);
     try {
       const keyData: KeyData = {
         secretKey: uint8ArrayToBase32Crockford(pair.secretKey),
@@ -86,6 +90,8 @@ export const useKeyManagement = () => {
       setLastSeenSeq(seq);
     } catch (error) {
       console.error('Failed to save keys to URL:', error);
+    } finally {
+      setIsSavingKeys(false);
     }
   }, []);
 
@@ -132,6 +138,7 @@ export const useKeyManagement = () => {
       return false;
     }
     
+    setIsUnlocking(true);
     const hash = window.location.hash.slice(1);
     
     // Check for new seal format
@@ -141,9 +148,11 @@ export const useKeyManagement = () => {
       if (restored) {
         setWaitingForMasterKey(false);
         setMasterKeyLocked(true);
+        setIsUnlocking(false);
         return true;
       } else {
         alert('Invalid master key for the encrypted data in URL');
+        setIsUnlocking(false);
         return false;
       }
     } 
@@ -170,30 +179,58 @@ export const useKeyManagement = () => {
           await saveKeysToUrl(pair, masterKey);
           setWaitingForMasterKey(false);
           setMasterKeyLocked(true);
+          setIsUnlocking(false);
           return true;
         }
       } catch (error) {
         console.error('Failed to restore from old format:', error);
+        alert('Invalid master key for the encrypted private key in URL');
+        setIsUnlocking(false);
+        return false;
       }
-      alert('Invalid master key for the encrypted private key in URL');
-      return false;
     }
     // No existing hash, generate new
     else {
       const pair = await generateNewKeypair();
       await saveKeysToUrl(pair, masterKey);
       setMasterKeyLocked(true);
+      setIsUnlocking(false);
       return true;
     }
   }, [masterKey, tryRestoreFromFragment, saveKeysToUrl]);
 
-  const lockApp = () => {
-    setMasterKey('');
-    setMasterKeyLocked(false);
-    if (window.location.hash) {
-      setWaitingForMasterKey(true);
+  const lockApp = useCallback(async () => {
+    setIsLocking(true);
+    try {
+      // Rotate the fragment with a fresh nonce before locking
+      if (keypair && masterKey && window.location.hash) {
+        const hash = window.location.hash.slice(1);
+        if (hash && hash.startsWith('v1.scrypt')) {
+          try {
+            const { rotate } = await decryptFromFragment<KeyData>(masterKey, hash, {
+              lastSeenSeq
+            });
+            // Rotate with fresh nonce (don't bump sequence)
+            const rotated = await rotate(false);
+            history.replaceState(null, '', location.pathname + location.search + '#' + rotated);
+            // Wait a moment to ensure the URL is updated
+            await new Promise(resolve => setTimeout(resolve, 50));
+          } catch (error) {
+            console.error('Failed to rotate fragment before locking:', error);
+          }
+        }
+      }
+      
+      // Only clear the master key and show locked screen AFTER fragment is rotated
+      setMasterKey('');
+      setMasterKeyLocked(false);
+      if (window.location.hash) {
+        setWaitingForMasterKey(true);
+      }
+    } finally {
+      setIsLocking(false);
     }
-  };
+  }, [keypair, masterKey, lastSeenSeq]);
 
   const encryptedPrivateKey = useMemo(() => {
     // This is now handled by the seal in the URL
@@ -243,6 +280,9 @@ export const useKeyManagement = () => {
     handleMasterKeySubmit,
     lockApp,
     incrementNonceCounter,
-    setWaitingForMasterKey
+    setWaitingForMasterKey,
+    isUnlocking,
+    isSavingKeys,
+    isLocking
   };
 };

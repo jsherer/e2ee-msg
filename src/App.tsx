@@ -26,7 +26,10 @@ const App: React.FC = () => {
     handleMasterKeySubmit,
     lockApp,
     incrementNonceCounter,
-    setWaitingForMasterKey
+    setWaitingForMasterKey,
+    isUnlocking,
+    isSavingKeys,
+    isLocking
   } = useKeyManagement();
 
   const {
@@ -79,6 +82,7 @@ const App: React.FC = () => {
       setIsRegenerating(true);
       await new Promise(resolve => setTimeout(resolve, 300));
       await generateNewKeypair();
+      // Wait for keys to be saved (isSavingKeys will be set by the useEffect)
       setIsRegenerating(false);
     }
   };
@@ -115,8 +119,8 @@ const App: React.FC = () => {
     setWaitingForMasterKey(false);
   };
 
-  // Show lock screen if master key not set
-  if (!masterKeyLocked) {
+  // Show lock screen if master key not set (but keep showing main UI while locking)
+  if (!masterKeyLocked && !isLocking) {
     return (
       <LockScreen
         masterKey={masterKey}
@@ -124,6 +128,7 @@ const App: React.FC = () => {
         onUnlock={handleMasterKeySubmit}
         waitingForMasterKey={waitingForMasterKey}
         onFreshStart={handleFreshStart}
+        isUnlocking={isUnlocking}
       />
     );
   }
@@ -149,7 +154,7 @@ const App: React.FC = () => {
           🔐 E2EE Local Messenger
         </h1>
         
-        <MasterKeyCard masterKey={masterKey} onLock={lockApp} />
+        <MasterKeyCard masterKey={masterKey} onLock={lockApp} isLocking={isLocking} />
 
         {masterKeyLocked && (
           <KeysDisplay
@@ -161,7 +166,7 @@ const App: React.FC = () => {
             setDisplayFormat={setDisplayFormat}
             copied={copied}
             onCopyPublicKey={copyPublicKey}
-            isRegenerating={isRegenerating}
+            isRegenerating={isRegenerating || isSavingKeys}
             onRegenerate={handleRegenerate}
           />
         )}

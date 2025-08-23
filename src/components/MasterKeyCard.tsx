@@ -3,9 +3,10 @@ import React from 'react';
 interface MasterKeyCardProps {
   masterKey: string;
   onLock: () => void;
+  isLocking?: boolean;
 }
 
-export const MasterKeyCard: React.FC<MasterKeyCardProps> = ({ masterKey, onLock }) => {
+export const MasterKeyCard: React.FC<MasterKeyCardProps> = ({ masterKey, onLock, isLocking = false }) => {
   const handleLock = () => {
     if (window.confirm('Lock the app?\n\nThis will clear your master key from memory. Your encrypted private key remains in the URL.\n\nContinue?')) {
       onLock();
@@ -39,24 +40,25 @@ export const MasterKeyCard: React.FC<MasterKeyCardProps> = ({ masterKey, onLock 
         </h3>
         <button
           onClick={handleLock}
+          disabled={isLocking}
           title="Lock the app"
           style={{
-            background: 'white',
+            background: isLocking ? '#FFA500' : 'white',
             border: '1px solid #e0e0e0',
             borderRadius: '6px',
             padding: '4px 10px',
-            cursor: 'pointer',
+            cursor: isLocking ? 'wait' : 'pointer',
             fontSize: '13px',
-            color: '#666',
+            color: isLocking ? 'white' : '#666',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
             transition: 'all 0.2s'
           }}
-          onMouseOver={(e) => e.currentTarget.style.borderColor = '#f44336'}
-          onMouseOut={(e) => e.currentTarget.style.borderColor = '#e0e0e0'}
+          onMouseOver={(e) => !isLocking && (e.currentTarget.style.borderColor = '#f44336')}
+          onMouseOut={(e) => !isLocking && (e.currentTarget.style.borderColor = '#e0e0e0')}
         >
-          🔒 Lock
+          🔒 {isLocking ? 'Locking...' : 'Lock'}
         </button>
       </div>
       <div style={{

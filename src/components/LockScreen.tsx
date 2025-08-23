@@ -6,6 +6,7 @@ interface LockScreenProps {
   onUnlock: () => void;
   waitingForMasterKey: boolean;
   onFreshStart: () => void;
+  isUnlocking: boolean;
 }
 
 export const LockScreen: React.FC<LockScreenProps> = ({
@@ -13,7 +14,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   setMasterKey,
   onUnlock,
   waitingForMasterKey,
-  onFreshStart
+  onFreshStart,
+  isUnlocking
 }) => {
   const handleSubmit = () => {
     if (masterKey.length < 12) {
@@ -67,9 +69,10 @@ export const LockScreen: React.FC<LockScreenProps> = ({
           type="password"
           value={masterKey}
           onChange={(e) => setMasterKey(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
+          onKeyPress={(e) => e.key === 'Enter' && !isUnlocking && handleSubmit()}
           placeholder="Master key / password"
           autoFocus
+          disabled={isUnlocking}
           style={{
             width: '100%',
             padding: '12px',
@@ -78,27 +81,28 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             border: '2px solid #ddd',
             borderRadius: '6px',
             marginBottom: '15px',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            opacity: isUnlocking ? 0.6 : 1
           }}
         />
         
         <button
           onClick={handleSubmit}
-          disabled={!masterKey || masterKey.length < 12}
+          disabled={!masterKey || masterKey.length < 12 || isUnlocking}
           style={{
             width: '100%',
             padding: '12px',
-            backgroundColor: masterKey && masterKey.length >= 12 ? '#4CAF50' : '#ccc',
+            backgroundColor: isUnlocking ? '#FFA500' : (masterKey && masterKey.length >= 12 ? '#4CAF50' : '#ccc'),
             color: 'white',
             border: 'none',
             borderRadius: '6px',
             fontSize: '16px',
             fontWeight: 'bold',
-            cursor: masterKey && masterKey.length >= 12 ? 'pointer' : 'not-allowed',
+            cursor: isUnlocking ? 'wait' : (masterKey && masterKey.length >= 12 ? 'pointer' : 'not-allowed'),
             transition: 'background-color 0.2s'
           }}
         >
-          Unlock
+          {isUnlocking ? 'Unlocking...' : 'Unlock'}
         </button>
 
         {waitingForMasterKey && (

@@ -3,24 +3,18 @@
 
 import nacl from "tweetnacl";
 import { scrypt } from "scrypt-js";
+import { uint8ArrayToBase32Crockford, base32CrockfordToUint8Array } from "./encoding";
 
 // ---------- helpers ----------
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-const b64u = {
+const b32c = {
   enc(u8: Uint8Array): string {
-    let s = "";
-    for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    return uint8ArrayToBase32Crockford(u8);
   },
   dec(s: string): Uint8Array {
-    s = s.replace(/-/g, "+").replace(/_/g, "/");
-    while (s.length % 4) s += "=";
-    const bin = atob(s);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
+    return base32CrockfordToUint8Array(s);
   },
 };
 
@@ -42,12 +36,12 @@ async function kdfScrypt(passphrase: string, params: ScryptParams): Promise<Uint
 }
 
 // ---------- envelope ----------
-// Fragment format (dot-separated, base64url):
+// Fragment format (dot-separated, base32 Crockford):
 // v1.scrypt.<N>.<r>.<p>.<salt>.<nonce>.<ct>
 // - salt: constant per secret (random 16–32B); keep the same across rotations
 // - nonce: 24B random per encryption (fresh every read/write)
 // - ct: secretbox(ciphertext)
-// All fields base64url except N/r/p (decimal strings).
+// All fields base32 Crockford except N/r/p (decimal strings).
 
 function buildFragment(
   params: ScryptParams,
@@ -60,9 +54,9 @@ function buildFragment(
     String(params.N),
     String(params.r),
     String(params.p),
-    b64u.enc(params.salt),
-    b64u.enc(nonce),
-    b64u.enc(ct),
+    b32c.enc(params.salt),
+    b32c.enc(nonce),
+    b32c.enc(ct),
   ].join(".");
 }
 
@@ -81,9 +75,9 @@ function parseFragment(fragment: string): {
   if (!Number.isFinite(N) || !Number.isFinite(r) || !Number.isFinite(p)) {
     throw new Error("Bad scrypt parameters");
   }
-  const salt = b64u.dec(parts[5]);
-  const nonce = b64u.dec(parts[6]);
-  const ct = b64u.dec(parts[7]);
+  const salt = b32c.dec(parts[5]);
+  const nonce = b32c.dec(parts[6]);
+  const ct = b32c.dec(parts[7]);
   if (nonce.length !== nacl.secretbox.nonceLength) throw new Error("Bad nonce length");
   return { params: { N, r, p, salt }, nonce, ct };
 }
