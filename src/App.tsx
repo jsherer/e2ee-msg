@@ -187,14 +187,16 @@ const App: React.FC = () => {
               ratchetInitialized={ratchetInitialized}
             />
 
-            <RatchetVisualizer
-              currentSession={ratchetSession}
-              operations={ratchetOperations}
-              isProcessing={isRatchetProcessing}
-              sessionCount={ratchetSessionCount}
-              onReset={handleResetRatchet}
-              onClearAll={clearAllSessions}
-            />
+            {useRatchet && (
+              <RatchetVisualizer
+                currentSession={ratchetSession}
+                operations={ratchetOperations}
+                isProcessing={isRatchetProcessing}
+                sessionCount={ratchetSessionCount}
+                onReset={handleResetRatchet}
+                onClearAll={clearAllSessions}
+              />
+            )}
           </>
         )}
 
