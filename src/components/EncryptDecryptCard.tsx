@@ -43,6 +43,7 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
       backgroundColor: 'white',
       borderRadius: '8px',
       padding: '20px',
+      marginBottom: '20px',
       boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
     }}>
       <div style={{ 

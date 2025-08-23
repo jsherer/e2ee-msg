@@ -168,15 +168,6 @@ const App: React.FC = () => {
 
         {keypair && !waitingForMasterKey && (
           <>
-            <RatchetVisualizer
-              currentSession={ratchetSession}
-              operations={ratchetOperations}
-              isProcessing={isRatchetProcessing}
-              sessionCount={ratchetSessionCount}
-              onReset={handleResetRatchet}
-              onClearAll={clearAllSessions}
-            />
-            
             <EncryptDecryptCard
               recipientPublicKey={recipientPublicKey}
               setRecipientPublicKey={setRecipientPublicKey}
@@ -194,6 +185,15 @@ const App: React.FC = () => {
               useRatchet={useRatchet}
               onToggleRatchet={() => setUseRatchet(!useRatchet)}
               ratchetInitialized={ratchetInitialized}
+            />
+
+            <RatchetVisualizer
+              currentSession={ratchetSession}
+              operations={ratchetOperations}
+              isProcessing={isRatchetProcessing}
+              sessionCount={ratchetSessionCount}
+              onReset={handleResetRatchet}
+              onClearAll={clearAllSessions}
             />
           </>
         )}

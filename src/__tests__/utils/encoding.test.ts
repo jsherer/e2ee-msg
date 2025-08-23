@@ -114,7 +114,7 @@ describe('encoding utilities', () => {
       
       const result = generateUserId(publicKey);
       
-      expect(result).toMatch(/^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/);
+      expect(result).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
     });
 
     it('should generate consistent ID for same key', () => {
