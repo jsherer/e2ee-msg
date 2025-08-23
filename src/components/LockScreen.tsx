@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { IconLock, IconLockPassword, IconLockOpen2 } from '@tabler/icons-react';
 
 interface LockScreenProps {
   masterKey: string;
   setMasterKey: (key: string) => void;
-  onUnlock: () => void;
+  onUnlock: () => Promise<boolean>;
   waitingForMasterKey: boolean;
   onFreshStart: () => void;
   isUnlocking: boolean;
@@ -17,12 +18,21 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   onFreshStart,
   isUnlocking
 }) => {
-  const handleSubmit = () => {
+  const [isUnlocked, setIsUnlocked] = useState(false);
+
+  const handleSubmit = async () => {
     if (masterKey.length < 12) {
       alert('Master key must be at least 12 characters long');
       return;
     }
-    onUnlock();
+    const success = await onUnlock();
+    if (success) {
+      setIsUnlocked(true);
+      // Brief delay to show the unlocked state
+      setTimeout(() => {
+        // Navigation will happen automatically via state change
+      }, 500);
+    }
   };
 
   const handleFreshStart = () => {
@@ -48,13 +58,30 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         maxWidth: '400px',
         width: '100%'
       }}>
-        <h1 style={{ 
+        <div style={{ 
           margin: '0 0 10px 0',
-          fontSize: '28px',
           textAlign: 'center'
         }}>
-          🔐 E2EE Local Messenger
-        </h1>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            marginBottom: '10px' 
+          }}>
+            {isUnlocked ? (
+              <IconLockOpen2 size={48} color="#4CAF50" />
+            ) : isUnlocking ? (
+              <IconLockPassword size={48} color="#FFA500" />
+            ) : (
+              <IconLock size={48} color="#666" />
+            )}
+          </div>
+          <h1 style={{ 
+            margin: 0,
+            fontSize: '28px'
+          }}>
+            E2EE Local Messenger
+          </h1>
+        </div>
         
         <p style={{ 
           textAlign: 'center',
@@ -69,10 +96,10 @@ export const LockScreen: React.FC<LockScreenProps> = ({
           type="password"
           value={masterKey}
           onChange={(e) => setMasterKey(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && !isUnlocking && handleSubmit()}
+          onKeyPress={(e) => e.key === 'Enter' && !isUnlocking && !isUnlocked && handleSubmit()}
           placeholder="Master key / password"
           autoFocus
-          disabled={isUnlocking}
+          disabled={isUnlocking || isUnlocked}
           style={{
             width: '100%',
             padding: '12px',
@@ -82,27 +109,27 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             borderRadius: '6px',
             marginBottom: '15px',
             boxSizing: 'border-box',
-            opacity: isUnlocking ? 0.6 : 1
+            opacity: isUnlocking || isUnlocked ? 0.6 : 1
           }}
         />
         
         <button
           onClick={handleSubmit}
-          disabled={!masterKey || masterKey.length < 12 || isUnlocking}
+          disabled={!masterKey || masterKey.length < 12 || isUnlocking || isUnlocked}
           style={{
             width: '100%',
             padding: '12px',
-            backgroundColor: isUnlocking ? '#FFA500' : (masterKey && masterKey.length >= 12 ? '#4CAF50' : '#ccc'),
+            backgroundColor: isUnlocked ? '#4CAF50' : isUnlocking ? '#FFA500' : (masterKey && masterKey.length >= 12 ? '#4CAF50' : '#ccc'),
             color: 'white',
             border: 'none',
             borderRadius: '6px',
             fontSize: '16px',
             fontWeight: 'bold',
-            cursor: isUnlocking ? 'wait' : (masterKey && masterKey.length >= 12 ? 'pointer' : 'not-allowed'),
+            cursor: isUnlocked || isUnlocking ? 'wait' : (masterKey && masterKey.length >= 12 ? 'pointer' : 'not-allowed'),
             transition: 'background-color 0.2s'
           }}
         >
-          {isUnlocking ? 'Unlocking...' : 'Unlock'}
+          {isUnlocked ? 'Unlocked!' : isUnlocking ? 'Unlocking...' : 'Unlock'}
         </button>
 
         {waitingForMasterKey && (

@@ -208,9 +208,9 @@ export const useKeyManagement = () => {
         if (hash && hash.startsWith('v1.scrypt')) {
           try {
             const { rotate } = await decryptFromFragment<KeyData>(masterKey, hash, {
-              lastSeenSeq
+              lastSeenSeq  
             });
-            // Rotate with fresh nonce (don't bump sequence)
+            // Just rotate with fresh nonce, don't bump sequence when locking
             const rotated = await rotate(false);
             history.replaceState(null, '', location.pathname + location.search + '#' + rotated);
             // Wait a moment to ensure the URL is updated
@@ -224,6 +224,8 @@ export const useKeyManagement = () => {
       // Only clear the master key and show locked screen AFTER fragment is rotated
       setMasterKey('');
       setMasterKeyLocked(false);
+      // Reset lastSeenSeq when locking so next unlock doesn't fail anti-rollback
+      setLastSeenSeq(0);
       if (window.location.hash) {
         setWaitingForMasterKey(true);
       }

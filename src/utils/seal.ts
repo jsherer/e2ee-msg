@@ -148,7 +148,10 @@ export async function decryptFromFragment<T = unknown>(
     payload.iat = Date.now();
     const newNonce = crypto.getRandomValues(new Uint8Array(nacl.secretbox.nonceLength));
     const newPt = enc.encode(JSON.stringify(payload));
-    const newCt = nacl.secretbox(newPt, newNonce, key);
+    // Need to re-derive the key since we zeroed it
+    const rotateKey = await kdfScrypt(passphrase, params);
+    const newCt = nacl.secretbox(newPt, newNonce, rotateKey);
+    rotateKey.fill(0); // Clean up the rotate key
     return buildFragment(params, newNonce, newCt);
   }
 
