@@ -1,21 +1,23 @@
 # E2EE MSG
 
-Serverless end-to-end encrypted messaging that runs entirely in your browser. No server, no tracking, no middleman - just pure cryptographic message exchange between you and your recipient.
+Serverless end-to-end encrypted messaging with Signal-style Double Ratchet Protocol that runs entirely in your browser. No server, no tracking, no middleman - just pure cryptographic message exchange with forward secrecy and post-compromise security.
 
 ## Features
 
 - 🔐 **End-to-End Encryption** - TweetNaCl (Curve25519, XSalsa20, Poly1305)
-- 🔑 **Master Password Protection** - Private keys encrypted with SHA-512 derived key
+- 🔄 **Double Ratchet Protocol** - Signal-style forward secrecy & post-compromise security
+- 🔑 **Secure Key Storage** - Private keys encrypted with scrypt (memory-hard KDF) and stored in URL
 - 🆔 **User ID** - Unique identifier derived from public key hash
 - 📝 **Multiple Key Formats**:
-  - Base32 (Crockford) with 5-character grouping
-  - BIP39 mnemonic words (24 words = 256 bits)
+  - Base32 Crockford with 5-character grouping (newlines every 25 chars)
+  - BIP39 mnemonic words (24 words = 256 bits, 4 words per line)
   - QR codes for easy scanning
-- 📸 **QR Code Scanner** - Scan recipient's public key QR code
-- 💾 **Persistent Storage** - Encrypted private keys stored in URL hash
-- 🎨 **Modern UI** - Clean, responsive design with dark accents
+- 📸 **QR Code Scanner** - Built-in camera support for scanning public keys
+- 💾 **URL-Based Persistence** - Encrypted keys with anti-rollback protection
+- 🎨 **Modern UI** - Clean, responsive design with intuitive first-use experience
+- 📊 **Ratchet Visualizer** - Real-time visualization of Double Ratchet state
 - 📦 **Standalone Distribution** - Single HTML file, no dependencies
-- ✅ **Fully Tested** - Comprehensive test suite including E2E encryption tests
+- ✅ **Fully Tested** - Comprehensive test suite including Double Ratchet tests
 
 ## Quick Start
 
@@ -41,11 +43,11 @@ npm run build:compressed   # LZ-compressed version (smaller)
 ```
 
 ### Output Files
-- `dist/bundle.js` - Compiled JavaScript (205KB minified)
-- `dist/standalone.html` - Single HTML file with embedded JS (206KB)
-- `dist/ultra.html` - LZ-compressed single file (135KB, 35% smaller)
-- `dist/datauri.txt` - Base64 data URI (274KB - too large for browsers)
-- `dist/datauri-ultra.txt` - Compressed data URI (139KB - still too large)
+- `dist/bundle.js` - Compiled JavaScript (~320KB minified)
+- `dist/standalone.html` - Single HTML file with embedded JS (~321KB)
+- `dist/ultra.html` - LZ-compressed single file (smaller, loads faster)
+- `dist/datauri.txt` - Base64 data URI (typically too large for browsers)
+- `dist/datauri-ultra.txt` - Compressed data URI (still often too large)
 
 
 ## Usage Guide
@@ -64,75 +66,71 @@ Choose from three formats:
 - **QR Code**: Visual format for scanning (supports camera scanning)
 
 ### Sending Encrypted Messages
-1. Get recipient's public key (any format)
+1. Get recipient's public key
 2. Paste it in "Recipient's Public Key" field
-3. Type your message
-4. Click "Encrypt" to generate encrypted message
-5. Share the encrypted text with recipient
+3. Toggle "Ratchet" ON for forward secrecy (default, recommended)
+4. Type your message
+5. Click "Encrypt" to generate encrypted message
+6. Share the encrypted text with recipient
 
 ### Receiving Encrypted Messages
 1. Get sender's public key
 2. Paste it in "Sender's Public Key" field
-3. Paste encrypted message in decrypt field
+3. Paste encrypted message
 4. Click "Decrypt" to read the message
+5. Ratchet protocol auto-detects and maintains session (when using)
+
+### Double Ratchet Protocol
+When enabled, provides Signal-level security:
+- **Forward Secrecy**: Past messages stay secure even if keys are compromised
+- **Post-Compromise Security**: Future messages become secure after key compromise ends
+- **Automatic Key Rotation**: Keys change with every message exchange
+- **Visual State Tracking**: See ratchet operations in real-time
+- **Session Management**: Reset individual or all sessions as needed
 
 ### Security Features
 - Private keys never leave your device unencrypted
-- Master password required to unlock keys
-- URL hash persistence (bookmark to save your encrypted key)
-- Reset option available on lock screen
-- Automatic lock on page reload
-
-## Architecture
-
-### Project Structure
-```
-src/
-├── App.tsx                 # Main app component (185 lines)
-├── components/            
-│   ├── LockScreen.tsx      # Master password entry
-│   ├── KeysDisplay.tsx     # Public/private key display
-│   ├── MasterKeyCard.tsx   # Lock/unlock controls
-│   ├── EncryptDecryptCard.tsx # Message encryption UI
-│   └── QRScannerModal.tsx  # QR code scanner
-├── hooks/
-│   ├── useKeyManagement.ts # Keypair & persistence logic
-│   ├── useCrypto.ts        # Encryption/decryption
-│   └── useQRScanner.ts     # Camera & QR scanning
-├── utils/
-│   ├── crypto.ts           # TweetNaCl wrappers
-│   ├── encoding.ts         # Base32 conversions
-│   ├── bip39.ts            # BIP39 word encoding
-│   └── clipboard.ts        # Copy functionality
-└── __tests__/
-    ├── integration/
-    │   └── e2e-encryption.test.ts  # Full E2E flow tests
-    └── ...                 # Component & utility tests
-```
+- Master key protected with scrypt (memory-hard KDF)
+- URL persistence with anti-rollback protection
+- Nonce rotation on lock/unlock for forward secrecy
+- Fresh start option for key rotation
+- Automatic session management
 
 ### Cryptography Details
 
+#### Base Encryption
 - **Keypair Generation**: TweetNaCl box keypair (Curve25519)
 - **Message Encryption**: nacl.box (public key cryptography)
-- **Private Key Encryption**: nacl.secretbox with SHA-512 derived key
-- **User ID**: First 16 bytes of SHA-512 hash of public key
-- **Nonce**: Random 24 bytes per message (prepended to ciphertext)
+- **Private Key Protection**: scrypt KDF + nacl.secretbox
+- **User ID**: SHA-512 hash of public key (first 8 bytes, formatted)
+
+#### Double Ratchet Protocol
+- **DH Ratchet**: Curve25519 ephemeral key exchange
+- **Symmetric Ratchet**: SHA-256 based KDF chains
+- **Message Keys**: Derived from chain keys, single use
+- **Header Encryption**: Includes ephemeral public key and counters
+- **Max Skip**: Supports up to 100 out-of-order messages
+- **Session Storage**: Encrypted with master key, persisted in localStorage
+
+#### Security Parameters
+- **Scrypt**: N=16384, r=8, p=1 (balanced for browser performance)
+- **Nonce**: Random 24 bytes per message
+- **Anti-Rollback**: Sequence number tracking in URL fragment
+- **Forward Secrecy**: Achieved through key deletion after use
 
 ### Test Coverage
 
-The application includes comprehensive tests:
-- Unit tests for all utilities and components
-- Integration tests for complete E2E encryption flow
-- Tests verify encryption, decryption, key exchange, and security
+The application includes comprehensive tests (69 tests total):
+- Double Ratchet Protocol tests (14 tests)
+- Cryptography and key management tests
+- Encoding and format conversion tests
+- Component behavior tests
+- Integration tests for complete E2E flow
 
 Run tests with: `npm test`
+View coverage: `npm test -- --coverage`
 
 ## Advanced Topics
-
-### Ratchet Protocols
-See documentation for forward secrecy options:
-- [docs/RATCHET.md](docs/RATCHET.md) - Full async double ratchet
-- [docs/SIMPLE-RATCHET.md](docs/SIMPLE-RATCHET.md) - One-way hash ratchet
 
 ### Browser Compatibility
 - Modern browsers with Web Crypto API support
@@ -142,7 +140,7 @@ See documentation for forward secrecy options:
 ### Known Limitations
 - Data URI exceeds browser limits (64KB max)
 - No server = no message relay (direct exchange only)
-- Keys stored in URL hash (clear on browser history clear)
+- Encrypted Keys stored in URL hash (clear on browser history clear)
 
 ## Tech Stack
 
@@ -163,14 +161,8 @@ See documentation for forward secrecy options:
 
 ## License
 
-MIT - See [LICENSE](LICENSE)
+See [LICENSE](LICENSE)
 
 ## Security Notice
 
-This is experimental software for educational purposes. While using established cryptographic libraries (TweetNaCl), it has not undergone formal security audit. For production use, consider established messaging protocols like Signal or Matrix.
-
-## Acknowledgments
-
-- [TweetNaCl.js](https://github.com/dchest/tweetnacl-js) for cryptography
-- [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) for word encoding
-- React team for the excellent framework
+This is experimental software for educational purposes. While it implements the Signal Double Ratchet Protocol and uses established cryptographic libraries (TweetNaCl), it has not undergone formal security audit. The implementation follows Signal's specifications but should not be considered production-ready without proper review.
