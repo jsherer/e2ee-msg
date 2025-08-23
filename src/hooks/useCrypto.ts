@@ -2,27 +2,45 @@
  * Hook for encryption and decryption operations
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { KeyPair } from '../types';
 import { encryptMessage, decryptMessage } from '../utils/crypto';
 import { base36ToUint8Array, formatInGroups, uint8ArrayToBase36 } from '../utils/encoding';
 import { isBIP39Format, wordsToUint8Array } from '../utils/bip39';
+import { useRatchet } from './useRatchet';
 
-export const useCrypto = (keypair: KeyPair | null, onNonceUpdate: () => void) => {
+export const useCrypto = (
+  keypair: KeyPair | null, 
+  onNonceUpdate: () => void,
+  masterKey: string
+) => {
   const [recipientPublicKey, setRecipientPublicKey] = useState('');
   const [message, setMessage] = useState('');
   const [output, setOutput] = useState('');
   const [isEncrypting, setIsEncrypting] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [useRatchetProtocol, setUseRatchetProtocol] = useState(true); // Default to ratchet ON
+  
+  // Ratchet protocol hook
+  const {
+    encryptWithRatchet,
+    decryptWithRatchet,
+    getCurrentSession,
+    resetSession,
+    clearAllSessions,
+    operations,
+    isProcessing,
+    sessionCount
+  } = useRatchet(keypair, masterKey);
 
-  const parsePublicKey = (keyString: string): Uint8Array => {
+  const parsePublicKey = useCallback((keyString: string): Uint8Array => {
     if (isBIP39Format(keyString)) {
       const words = keyString.toLowerCase().trim().split(/\s+/);
       return wordsToUint8Array(words);
     } else {
       return base36ToUint8Array(keyString, 32);
     }
-  };
+  }, []);
 
   const handleEncrypt = async () => {
     if (!keypair || !recipientPublicKey || !message) {
@@ -37,7 +55,21 @@ export const useCrypto = (keypair: KeyPair | null, onNonceUpdate: () => void) =>
 
     try {
       const recipientKey = parsePublicKey(recipientPublicKey);
-      const encrypted = encryptMessage(message, recipientKey, keypair.secretKey);
+      
+      let encrypted: Uint8Array;
+      if (useRatchetProtocol) {
+        // Use ratchet protocol
+        const encryptedData = encryptWithRatchet(message, recipientKey);
+        if (!encryptedData) {
+          setOutput('Error: Ratchet encryption failed');
+          return;
+        }
+        encrypted = encryptedData;
+      } else {
+        // Use standard encryption
+        encrypted = encryptMessage(message, recipientKey, keypair.secretKey);
+      }
+      
       const formattedOutput = formatInGroups(uint8ArrayToBase36(encrypted));
       setOutput(`Encrypted:\n${formattedOutput}`);
       
@@ -64,14 +96,29 @@ export const useCrypto = (keypair: KeyPair | null, onNonceUpdate: () => void) =>
     try {
       const senderKey = parsePublicKey(recipientPublicKey);
       const encryptedData = base36ToUint8Array(message);
-      const decrypted = decryptMessage(encryptedData, senderKey, keypair.secretKey);
       
-      if (!decrypted) {
-        setOutput('Decryption failed: Invalid message or wrong keys');
+      // Check if this is a ratchet message (version byte 0x01)
+      const isRatchetMessage = encryptedData.length > 0 && encryptedData[0] === 0x01;
+      
+      let decrypted: string | null;
+      if (isRatchetMessage || useRatchetProtocol) {
+        // Use ratchet protocol
+        decrypted = decryptWithRatchet(encryptedData, senderKey);
+        if (!decrypted) {
+          setOutput('Decryption failed: Invalid ratchet message or wrong keys');
+        } else {
+          setOutput(`Decrypted:\n${decrypted}`);
+          onNonceUpdate();
+        }
       } else {
-        setOutput(`Decrypted:\n${decrypted}`);
-        // Re-encrypt private key with new nonce
-        onNonceUpdate();
+        // Use standard decryption
+        const decryptedMsg = decryptMessage(encryptedData, senderKey, keypair.secretKey);
+        if (!decryptedMsg) {
+          setOutput('Decryption failed: Invalid message or wrong keys');
+        } else {
+          setOutput(`Decrypted:\n${decryptedMsg}`);
+          onNonceUpdate();
+        }
       }
     } catch (error) {
       setOutput(`Decryption error: ${error}`);
@@ -79,6 +126,29 @@ export const useCrypto = (keypair: KeyPair | null, onNonceUpdate: () => void) =>
       setIsDecrypting(false);
     }
   };
+
+  // Check if ratchet is initialized for current recipient
+  const isRatchetInitialized = useCallback((): boolean => {
+    if (!recipientPublicKey) return false;
+    try {
+      const recipientKey = parsePublicKey(recipientPublicKey);
+      const session = getCurrentSession();
+      return session !== null && session.isInitialized;
+    } catch {
+      return false;
+    }
+  }, [recipientPublicKey, getCurrentSession, parsePublicKey]);
+
+  // Reset ratchet for current recipient
+  const handleResetRatchet = useCallback(() => {
+    if (!recipientPublicKey) return;
+    try {
+      const recipientKey = parsePublicKey(recipientPublicKey);
+      resetSession(recipientKey);
+    } catch (error) {
+      console.error('Failed to reset ratchet:', error);
+    }
+  }, [recipientPublicKey, resetSession, parsePublicKey]);
 
   return {
     recipientPublicKey,
@@ -90,6 +160,16 @@ export const useCrypto = (keypair: KeyPair | null, onNonceUpdate: () => void) =>
     isEncrypting,
     isDecrypting,
     handleEncrypt,
-    handleDecrypt
+    handleDecrypt,
+    // Ratchet specific
+    useRatchet: useRatchetProtocol,
+    setUseRatchet: setUseRatchetProtocol,
+    ratchetInitialized: isRatchetInitialized(),
+    ratchetOperations: operations,
+    ratchetSession: getCurrentSession(),
+    isRatchetProcessing: isProcessing,
+    ratchetSessionCount: sessionCount,
+    handleResetRatchet,
+    clearAllSessions
   };
 };

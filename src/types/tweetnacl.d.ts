@@ -16,6 +16,7 @@ declare module 'tweetnacl' {
       function fromSecretKey(secretKey: Uint8Array): KeyPair;
     }
     function open(box: Uint8Array, nonce: Uint8Array, theirPublicKey: Uint8Array, mySecretKey: Uint8Array): Uint8Array | null;
+    function before(theirPublicKey: Uint8Array, mySecretKey: Uint8Array): Uint8Array;
   }
   
   export function box(message: Uint8Array, nonce: Uint8Array, theirPublicKey: Uint8Array, mySecretKey: Uint8Array): Uint8Array;
@@ -36,4 +37,11 @@ declare module 'tweetnacl' {
   
   export function randomBytes(n: number): Uint8Array;
   export function hash(message: Uint8Array): Uint8Array;
+  export function scalarMult(n: Uint8Array, p: Uint8Array): Uint8Array;
+  
+  export namespace scalarMult {
+    const scalarLength: number;
+    const groupElementLength: number;
+    function base(n: Uint8Array): Uint8Array;
+  }
 }

@@ -4,6 +4,7 @@ import { MasterKeyCard } from './components/MasterKeyCard';
 import { KeysDisplay } from './components/KeysDisplay';
 import { EncryptDecryptCard } from './components/EncryptDecryptCard';
 import { QRScannerModal } from './components/QRScannerModal';
+import { RatchetVisualizer } from './components/RatchetVisualizer';
 import { useKeyManagement } from './hooks/useKeyManagement';
 import { useCrypto } from './hooks/useCrypto';
 import { useQRScanner } from './hooks/useQRScanner';
@@ -37,8 +38,17 @@ const App: React.FC = () => {
     isEncrypting,
     isDecrypting,
     handleEncrypt,
-    handleDecrypt
-  } = useCrypto(keypair, incrementNonceCounter);
+    handleDecrypt,
+    useRatchet,
+    setUseRatchet,
+    ratchetInitialized,
+    ratchetOperations,
+    ratchetSession,
+    isRatchetProcessing,
+    ratchetSessionCount,
+    handleResetRatchet,
+    clearAllSessions
+  } = useCrypto(keypair, incrementNonceCounter, masterKey);
 
   const {
     showScanner,
@@ -157,21 +167,35 @@ const App: React.FC = () => {
         )}
 
         {keypair && !waitingForMasterKey && (
-          <EncryptDecryptCard
-            recipientPublicKey={recipientPublicKey}
-            setRecipientPublicKey={setRecipientPublicKey}
-            message={message}
-            setMessage={setMessage}
-            output={output}
-            isEncrypting={isEncrypting}
-            isDecrypting={isDecrypting}
-            onEncrypt={handleEncrypt}
-            onDecrypt={handleDecrypt}
-            hasCamera={hasCamera}
-            onOpenScanner={openScanner}
-            copiedOutput={copiedOutput}
-            onCopyOutput={copyOutput}
-          />
+          <>
+            <RatchetVisualizer
+              currentSession={ratchetSession}
+              operations={ratchetOperations}
+              isProcessing={isRatchetProcessing}
+              sessionCount={ratchetSessionCount}
+              onReset={handleResetRatchet}
+              onClearAll={clearAllSessions}
+            />
+            
+            <EncryptDecryptCard
+              recipientPublicKey={recipientPublicKey}
+              setRecipientPublicKey={setRecipientPublicKey}
+              message={message}
+              setMessage={setMessage}
+              output={output}
+              isEncrypting={isEncrypting}
+              isDecrypting={isDecrypting}
+              onEncrypt={handleEncrypt}
+              onDecrypt={handleDecrypt}
+              hasCamera={hasCamera}
+              onOpenScanner={openScanner}
+              copiedOutput={copiedOutput}
+              onCopyOutput={copyOutput}
+              useRatchet={useRatchet}
+              onToggleRatchet={() => setUseRatchet(!useRatchet)}
+              ratchetInitialized={ratchetInitialized}
+            />
+          </>
         )}
 
         {showScanner && (

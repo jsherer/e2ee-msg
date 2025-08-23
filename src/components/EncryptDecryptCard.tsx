@@ -15,6 +15,9 @@ interface EncryptDecryptCardProps {
   onOpenScanner: () => void;
   copiedOutput: boolean;
   onCopyOutput: () => void;
+  useRatchet: boolean;
+  onToggleRatchet: () => void;
+  ratchetInitialized: boolean;
 }
 
 export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
@@ -30,7 +33,10 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
   hasCamera,
   onOpenScanner,
   copiedOutput,
-  onCopyOutput
+  onCopyOutput,
+  useRatchet,
+  onToggleRatchet,
+  ratchetInitialized
 }) => {
   return (
     <div style={{
@@ -39,13 +45,49 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
       padding: '20px',
       boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
     }}>
-      <h3 style={{ 
-        margin: '0 0 20px 0', 
-        fontSize: '18px', 
-        color: '#333' 
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: '20px'
       }}>
-        💬 Encrypt/Decrypt Messages
-      </h3>
+        <h3 style={{ 
+          margin: 0, 
+          fontSize: '18px', 
+          color: '#333' 
+        }}>
+          💬 Encrypt/Decrypt Messages
+        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {ratchetInitialized && (
+            <span style={{
+              padding: '4px 8px',
+              borderRadius: '12px',
+              backgroundColor: '#4CAF50',
+              color: 'white',
+              fontSize: '11px',
+              fontWeight: 'bold'
+            }}>
+              RATCHET ACTIVE
+            </span>
+          )}
+          <button
+            onClick={onToggleRatchet}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: useRatchet ? '#4CAF50' : '#f0f0f0',
+              color: useRatchet ? 'white' : '#333',
+              border: '1px solid ' + (useRatchet ? '#4CAF50' : '#ddd'),
+              borderRadius: '6px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            {useRatchet ? '🔐 Ratchet ON' : '🔓 Ratchet OFF'}
+          </button>
+        </div>
+      </div>
 
       <div style={{ marginBottom: '20px' }}>
         <label style={{ 
@@ -55,7 +97,11 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
           fontWeight: '500', 
           color: '#555' 
         }}>
-          Recipient's Public Key:
+          Recipient's Public Key: {useRatchet && !ratchetInitialized && recipientPublicKey && (
+            <span style={{ color: '#ff9800', fontSize: '12px', marginLeft: '8px' }}>
+              (Ratchet will initialize on first message)
+            </span>
+          )}
         </label>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
