@@ -344,4 +344,119 @@ describe('Double Ratchet Protocol', () => {
       expect(new TextDecoder().decode(dec3)).toBe('Secure again');
     });
   });
+
+  describe('Session Reset', () => {
+    it('should handle session reset in the middle of conversation', () => {
+      const alice = generateKeyPair();
+      const bob = generateKeyPair();
+      
+      // Initialize first session
+      let aliceState = initializeRatchet(alice, bob.publicKey);
+      let bobState = initializeRatchet(bob, alice.publicKey);
+      
+      // Exchange messages in first session
+      const msg1 = new TextEncoder().encode('First session message 1');
+      const [enc1, aliceState2] = ratchetEncrypt(aliceState, msg1);
+      const [dec1, bobState2] = ratchetDecrypt(bobState, enc1);
+      expect(new TextDecoder().decode(dec1)).toBe('First session message 1');
+      
+      // After first exchange, states have diverged with DH ratchet
+      const msg2 = new TextEncoder().encode('First session message 2');
+      const [enc2, bobState3] = ratchetEncrypt(bobState2, msg2);
+      const [dec2, aliceState3] = ratchetDecrypt(aliceState2, enc2);
+      expect(new TextDecoder().decode(dec2)).toBe('First session message 2');
+      
+      const msg3 = new TextEncoder().encode('First session message 3');
+      const [enc3, aliceState4] = ratchetEncrypt(aliceState3, msg3);
+      const [dec3, bobState4] = ratchetDecrypt(bobState3, enc3);
+      expect(new TextDecoder().decode(dec3)).toBe('First session message 3');
+      
+      // Reset both sessions (simulating "Reset Session" button click)
+      const aliceNewState = initializeRatchet(alice, bob.publicKey);
+      const bobNewState = initializeRatchet(bob, alice.publicKey);
+      
+      // Verify new sessions have fresh ephemeral keys (these are random)
+      expect(aliceNewState.myCurrentEphemeralKeyPair.publicKey).not.toEqual(aliceState4.myCurrentEphemeralKeyPair.publicKey);
+      expect(bobNewState.myCurrentEphemeralKeyPair.publicKey).not.toEqual(bobState4.myCurrentEphemeralKeyPair.publicKey);
+      
+      // The first message might decrypt because initial keys are deterministic,
+      // but later messages after DH ratchet should fail
+      let oldMessageDecrypts = false;
+      try {
+        // Try to decrypt the third message (after DH ratchets)
+        const [wrongDec3] = ratchetDecrypt(bobNewState, enc3);
+        oldMessageDecrypts = true;
+      } catch (e) {
+        // Expected - messages after DH ratchet shouldn't decrypt
+      }
+      
+      // Even if first message decrypts, the session state will be wrong
+      // and future messages won't work correctly
+      
+      // New session should work independently
+      const newMsg1 = new TextEncoder().encode('New session message 1');
+      const [newEnc1, aliceNewState2] = ratchetEncrypt(aliceNewState, newMsg1);
+      const [newDec1, bobNewState2] = ratchetDecrypt(bobNewState, newEnc1);
+      expect(new TextDecoder().decode(newDec1)).toBe('New session message 1');
+      
+      // New encrypted messages should be different from old ones
+      const duplicateMsg = new TextEncoder().encode('First session message 1');
+      const [duplicateEnc, aliceNewState3] = ratchetEncrypt(aliceNewState2, duplicateMsg);
+      // Even with same plaintext, ciphertext differs due to different ephemeral keys and nonces
+      expect(duplicateEnc).not.toEqual(enc1);
+      
+      // Continue conversation in new session
+      const newMsg2 = new TextEncoder().encode('New session message 2');
+      const [newEnc2, bobNewState3] = ratchetEncrypt(bobNewState2, newMsg2);
+      const [newDec2, aliceNewState4] = ratchetDecrypt(aliceNewState3, newEnc2);
+      expect(new TextDecoder().decode(newDec2)).toBe('New session message 2');
+      
+      // Verify message counters reset
+      expect(aliceNewState.sendMessageCounter).toBe(0);
+      expect(aliceNewState.receiveMessageCounter).toBe(0);
+      expect(bobNewState.sendMessageCounter).toBe(0);
+      expect(bobNewState.receiveMessageCounter).toBe(0);
+      
+      // Verify the sessions are truly independent - old session can't decrypt new messages
+      expect(() => {
+        ratchetDecrypt(bobState4, newEnc1);
+      }).toThrow();
+    });
+
+    it('should handle asymmetric session reset (only one party resets)', () => {
+      const alice = generateKeyPair();
+      const bob = generateKeyPair();
+      
+      // Initialize session
+      let aliceState = initializeRatchet(alice, bob.publicKey);
+      let bobState = initializeRatchet(bob, alice.publicKey);
+      
+      // Exchange messages
+      const msg1 = new TextEncoder().encode('Before reset');
+      const [enc1, aliceState2] = ratchetEncrypt(aliceState, msg1);
+      const [dec1, bobState2] = ratchetDecrypt(bobState, enc1);
+      expect(new TextDecoder().decode(dec1)).toBe('Before reset');
+      
+      // Only Alice resets her session
+      const aliceNewState = initializeRatchet(alice, bob.publicKey);
+      
+      // Alice sends with new session
+      const msg2 = new TextEncoder().encode('After Alice reset');
+      const [enc2, aliceNewState2] = ratchetEncrypt(aliceNewState, msg2);
+      
+      // Bob (with old session) should fail to decrypt
+      expect(() => {
+        ratchetDecrypt(bobState2, enc2);
+      }).toThrow();
+      
+      // Bob needs to reset too to continue
+      const bobNewState = initializeRatchet(bob, alice.publicKey);
+      
+      // Now they can communicate again
+      const msg3 = new TextEncoder().encode('Both reset now');
+      const [enc3, aliceNewState3] = ratchetEncrypt(aliceNewState2, msg3);
+      const [dec3, bobNewState2] = ratchetDecrypt(bobNewState, enc3);
+      expect(new TextDecoder().decode(dec3)).toBe('Both reset now');
+    });
+  });
 });

@@ -96,7 +96,7 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
         <strong>Private Key (Encrypted):</strong> {encryptedPrivateKey?.replace(/[0-9A-Za-z\.]/g, "•") || 'Generating...'}
         {'\n\n'}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <strong>Public Key:</strong>
+          <strong>Public Key (Share this with your recipient):</strong>
           <div style={{ display: 'flex', gap: '6px' }}>
             <button
               onClick={toggleFormat}
