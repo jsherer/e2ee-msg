@@ -79,7 +79,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             margin: 0,
             fontSize: '28px'
           }}>
-            E2EE Local Messenger
+            E2EE Messenger
           </h1>
         </div>
         
@@ -105,7 +105,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             }}>
               Create a master key to protect your encryption keys.
               <br />
-              Your messages never leave your device.
+              Your private keys never leave your device.
             </p>
             <div style={{
               backgroundColor: '#e3f2fd',
@@ -115,7 +115,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
               color: '#1565c0',
               lineHeight: '1.4'
             }}>
-              <strong>🔑 First time?</strong> We'll generate a unique keypair for you, encrypted with your master key and stored in the URL for easy sharing between sessions.
+              <strong>First time?</strong> We'll generate a unique keypair for you, encrypted with your master key and stored in the URL for easy sharing between sessions.
             </div>
           </div>
         ) : (

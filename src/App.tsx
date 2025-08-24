@@ -147,15 +147,6 @@ const App: React.FC = () => {
         margin: '0 auto',
         padding: '20px'
       }}>
-        <h1 style={{ 
-          textAlign: 'center',
-          fontSize: '32px',
-          marginBottom: '30px',
-          color: '#333'
-        }}>
-          🔐 E2EE Local Messenger
-        </h1>
-        
         <MasterKeyCard 
           masterKey={masterKey} 
           onLock={lockApp} 
