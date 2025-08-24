@@ -14,6 +14,7 @@ interface KeysDisplayProps {
   onCopyPublicKey: () => void;
   isRegenerating: boolean;
   onRegenerate: () => void;
+  showPrivateKey: boolean;
 }
 
 export const KeysDisplay: React.FC<KeysDisplayProps> = ({
@@ -26,7 +27,8 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
   copied,
   onCopyPublicKey,
   isRegenerating,
-  onRegenerate
+  onRegenerate,
+  showPrivateKey = false,
 }) => {
   const toggleFormat = () => {
     const formats: DisplayFormat[] = ['base32', 'words', 'qr'];
@@ -54,6 +56,8 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
           color: '#333'
         }}>
           🔑 Your Keys
+          <br/>
+          <small style={{fontSize:12, fontStyle:'italic', fontWeight:'normal'}}>Your private key is encrypted and hidden</small>
         </h3>
         <button
           onClick={onRegenerate}
@@ -93,8 +97,6 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
             {'\n\n'}
           </>
         )}
-        <strong>Private Key (Encrypted):</strong> {encryptedPrivateKey?.replace(/[0-9A-Za-z\.]/g, "•") || 'Generating...'}
-        {'\n\n'}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <strong>Public Key (Share this with your recipient):</strong>
           <div style={{ display: 'flex', gap: '6px' }}>
