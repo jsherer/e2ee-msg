@@ -30,7 +30,8 @@ const App: React.FC = () => {
     setWaitingForMasterKey,
     isUnlocking,
     isSavingKeys,
-    isLocking
+    isLocking,
+    changeMasterKey
   } = useKeyManagement();
 
   const {
@@ -155,7 +156,13 @@ const App: React.FC = () => {
           🔐 E2EE Local Messenger
         </h1>
         
-        <MasterKeyCard masterKey={masterKey} onLock={lockApp} isLocking={isLocking} />
+        <MasterKeyCard 
+          masterKey={masterKey} 
+          onLock={lockApp} 
+          isLocking={isLocking}
+          onChangeMasterKey={changeMasterKey}
+          isChangingMasterKey={isSavingKeys}
+        />
 
         {masterKeyLocked && (
           <KeysDisplay

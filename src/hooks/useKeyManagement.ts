@@ -274,6 +274,25 @@ export const useKeyManagement = () => {
     setNonceCounter(prev => prev + 1);
   };
 
+  const changeMasterKey = useCallback(async (newMasterKey: string): Promise<boolean> => {
+    if (!keypair || !masterKey || newMasterKey.length < 12) {
+      return false;
+    }
+
+    try {
+      // Save keys with new master key
+      await saveKeysToUrl(keypair, newMasterKey);
+      
+      // Update the master key in state
+      setMasterKey(newMasterKey);
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to change master key:', error);
+      return false;
+    }
+  }, [keypair, masterKey, saveKeysToUrl]);
+
   return {
     keypair,
     keypairDisplay,
@@ -290,6 +309,7 @@ export const useKeyManagement = () => {
     setWaitingForMasterKey,
     isUnlocking,
     isSavingKeys,
-    isLocking
+    isLocking,
+    changeMasterKey
   };
 };
