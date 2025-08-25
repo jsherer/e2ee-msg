@@ -3,24 +3,25 @@
 
 ## Executive Summary
 
-Ladder achieves forward secrecy from the first message using a deterministic OPK (one-time prekey) ladder with monotonic counters for replay protection. Users share an extended key bundle (identity + ephemeral seed) once, then derive unique OPKs deterministically for each session.
+Ladder achieves forward secrecy from the first message using a deterministic OPK (one-time prekey) ladder with monotonic counters for replay protection. No server or control round-trip required. Uses out-of-band trust where peers authenticate identity keys ahead of time (e.g., QR code, secure email).
 
 ## 1. Key Bundle Exchange
 
-### 1.1 Extended Key Bundle Format
+### 1.1 Key Bundle Format (Out-of-Band)
 
-Users share a signed bundle containing both identity and ephemeral seed:
+Users share a 64-byte bundle containing identity and ephemeral seed:
 
 ```
-KeyBundle = IdentityPublicKey || EphemeralSeedPublicKey || Signature
-           (32 bytes)            (32 bytes)              (64 bytes)
-           Total: 128 bytes
+KeyBundle = IK_dh_pub || ES_pub
+           (32 bytes)  (32 bytes)
+           Total: 64 bytes
 
 Where:
-Signature = Sign_IK("ladder-bundle-v1" || IK_pub || ES_pub)
+- IK_dh: X25519 key pair for Diffie-Hellman operations
+- ES: X25519 ephemeral seed for OPK ladder derivation
 ```
 
-The ephemeral key serves as the seed for the deterministic OPK ladder. The signature prevents substitution attacks.
+The bundle is shared out-of-band and authenticated through external means (QR code, secure channel, etc.).
 
 ### 1.2 Ladder Initialization
 
@@ -34,20 +35,20 @@ When Bob receives Alice's bundle:
 
 ## 2. Protocol Flow
 
-### 2.1 OPK Derivation
+### 2.1 Deterministic OPK Ladder
 
-For each message session, derive OPK from seed and counter. The derivation is symmetric but computed differently by each party:
+Audience-bound OPKs derived per index i ≥ 1. The derivation is symmetric but computed differently by each party:
 
 ```typescript
 // Initiator (Alice) derives peer's OPK public key
 async function deriveOPKPublic_Initiator(
-  peerEphemeralSeedPub: Uint8Array,  // ES_B_pub
-  myIdentitySecret: Uint8Array,      // IK_A_sk
-  peerIdentityPub: Uint8Array,       // IK_B_pub (for fingerprint)
-  index: number                      // Counter value
+  ES_B_pub: Uint8Array,         // Peer's ephemeral seed public
+  IK_A_sk: Uint8Array,          // My identity secret (X25519)
+  IK_B_pub: Uint8Array,         // Peer's identity public (for fingerprint)
+  i: number                     // Counter value
 ): Promise<Uint8Array> {
   // seed = X25519(IK_A_sk, ES_B_pub)
-  const seed = nacl.scalarMult(myIdentitySecret, peerEphemeralSeedPub);
+  const seed = nacl.scalarMult(IK_A_sk, ES_B_pub);
   
   // PRK = HKDF-Extract("ladder-seed-v1", seed)
   const prk = await hkdfExtract(
@@ -55,41 +56,41 @@ async function deriveOPKPublic_Initiator(
     seed
   );
   
-  // info = "ladder-opk" || FPR(IK_B_pub) || LE32(index)
-  const fpr = await sha256(peerIdentityPub);
+  // info = "ladder-opk" || SHA256(IK_B_pub) || LE32(i)
+  const fpr = await sha256(IK_B_pub);
   const info = concat(
     encode("ladder-opk"),
     fpr,
-    encodeLE32(index)
+    encodeLE32(i)
   );
   
-  const opkSecret = clamp25519(await hkdfExpand(prk, info, 32));
-  return nacl.scalarMult.base(opkSecret); // OPK_i public key
+  const SK_i = clamp25519(await hkdfExpand(prk, info, 32));
+  return nacl.scalarMult.base(SK_i); // PK_i = X25519(SK_i, BasePoint)
 }
 
 // Responder (Bob) derives OPK secret key
 async function deriveOPKSecret_Responder(
-  myEphemeralSeedSecret: Uint8Array, // ES_B_sk
-  peerIdentityPub: Uint8Array,       // IK_A_pub
-  index: number                      // Counter value
+  ES_B_sk: Uint8Array,          // My ephemeral seed secret
+  IK_A_pub: Uint8Array,         // Peer's identity public
+  i: number                     // Counter value
 ): Promise<Uint8Array> {
-  // seed = X25519(ES_B_sk, IK_A_pub) - same as Alice's seed
-  const seed = nacl.scalarMult(myEphemeralSeedSecret, peerIdentityPub);
+  // seed = X25519(ES_B_sk, IK_A_pub) - same seed as Alice
+  const seed = nacl.scalarMult(ES_B_sk, IK_A_pub);
   
   const prk = await hkdfExtract(
     encode("ladder-seed-v1"),
     seed
   );
   
-  // info = "ladder-opk" || FPR(IK_A_pub) || LE32(index)
-  const fpr = await sha256(peerIdentityPub);
+  // info = "ladder-opk" || SHA256(IK_A_pub) || LE32(i)
+  const fpr = await sha256(IK_A_pub);
   const info = concat(
     encode("ladder-opk"),
     fpr,
-    encodeLE32(index)
+    encodeLE32(i)
   );
   
-  return clamp25519(await hkdfExpand(prk, info, 32)); // OPK_i secret
+  return clamp25519(await hkdfExpand(prk, info, 32)); // SK_i
 }
 ```
 
@@ -110,22 +111,29 @@ interface LadderMessage {
 }
 ```
 
-### 2.3 Sending First Message (Alice → Bob)
+### 2.3 One-Way Start (Alice → Bob)
 
-Alice sends her first message with embedded PreKeyInit:
+Alice sends her first message with embedded PreKeyInit header:
 
 ```
 1. Get next counter: i = next_i_alice++
-2. Derive Bob's OPK: OPK_i = deriveOPK(bobEphemeralSeed, aliceIdentity, i)
-3. Generate fresh ephemeral: EK_A = generateKeyPair()
-4. Compute DH operations:
-   DH1 = X25519(IK_A.secret, IK_B.public)
-   DH2 = X25519(EK_A.secret, IK_B.public)  
-   DH3 = X25519(EK_A.secret, OPK_i)
+2. Derive Bob's OPK: OPK_B_i_pub = deriveOPKPublic_Initiator(ES_B_pub, IK_A_sk, IK_B_pub, i)
+3. Generate fresh ephemeral: EK_A = nacl.box.keyPair()
+
+4. Compute 3DH operations (fixed order):
+   DH1 = X25519(IK_A_sk, IK_B_pub)      // Authentication via identities
+   DH2 = X25519(EK_A_sk, IK_B_pub)      // FS via Alice ephemeral
+   DH3 = X25519(EK_A_sk, OPK_B_i_pub)   // FS + anti-replay via ladder index i
+   DH_concat = DH1 || DH2 || DH3
+   
 5. Derive shared secret:
-   SK = HKDF(DH1 || DH2 || DH3)
-6. Initialize Double Ratchet with SK
-7. Encrypt message with ratchet
+   SK = HKDF-Extract("ladder-v1", DH_concat)
+   RK0 || CKs0 = HKDF-Expand(SK, "dr-init-v1", 64)  // 32B RK0, 32B CKs0
+   
+6. Initialize Double Ratchet (asymmetric):
+   sendingChainKey = CKs0, receivingChainKey = null
+   
+7. Encrypt payload with ratchet
 8. Send LadderMessage with PreKeyInit header + encrypted payload
 ```
 
@@ -134,12 +142,25 @@ Alice sends her first message with embedded PreKeyInit:
 Bob processes the LadderMessage:
 ```
 1. Extract PreKeyInit header from message
-2. Check replay: if (i <= max_spent_alice) REJECT
-3. Derive same OPK: OPK_i = deriveOPK(myEphemeralSeed, aliceIdentity, i)
-4. Compute same DH operations with his secrets
-5. Update counter: max_spent_alice = i
-6. Initialize Double Ratchet with SK
-7. Decrypt the payload using ratchet
+2. Verify replay: if (i <= max_spent_alice) REJECT
+3. Derive OPK secret: SK_i = deriveOPKSecret_Responder(ES_B_sk, IK_A_pub, i)
+
+4. Compute same 3DH operations (using Bob's secrets):
+   DH1 = X25519(IK_B_sk, IK_A_pub)      // Authentication
+   DH2 = X25519(IK_B_sk, EK_A_pub)      // FS via Alice ephemeral  
+   DH3 = X25519(SK_i, EK_A_pub)         // FS + anti-replay via OPK_i
+   DH_concat = DH1 || DH2 || DH3
+   
+5. Derive shared secret (same as Alice):
+   SK = HKDF-Extract("ladder-v1", DH_concat)
+   RK0 || CKs0 = HKDF-Expand(SK, "dr-init-v1", 64)
+   
+6. Update counter: max_spent_alice = i
+
+7. Initialize Double Ratchet (asymmetric):
+   receivingChainKey = CKs0, sendingChainKey = null
+   
+8. Decrypt the payload using ratchet
 ```
 
 ### 2.5 Subsequent Messages
@@ -203,14 +224,14 @@ export interface LadderState {
 
 // LadderMessage combines PreKeyInit header with encrypted payload
 export interface LadderMessage {
-  // PreKeyInit header (always included for new sessions)
+  // PreKeyInit header (only for new sessions/resets)
   version: 1;
-  opkIndex: number;
-  senderIdentityKey: Uint8Array;
-  senderEphemeralKey: Uint8Array;
+  opkIndex: number;                // Counter i
+  senderIdentityKey: Uint8Array;   // IK_A_pub (X25519)
+  senderEphemeralKey: Uint8Array;  // EK_A_pub (fresh per session)
   
   // The encrypted message payload
-  encryptedPayload: Uint8Array;
+  encryptedPayload: Uint8Array;    // AEAD under DR (sender chain)
 }
 
 export interface LadderSession {
@@ -243,19 +264,19 @@ function clamp25519(sk: Uint8Array): Uint8Array {
 
 // Initiator (Alice) computes peer OPK PUBLIC for index i
 export async function deriveOPKPublic_Initiator(
-  peerEphemeralSeedPub: Uint8Array,  // ES_B_pub
-  myIdentitySecret: Uint8Array,      // IK_A_sk
-  peerIdentityPub: Uint8Array,       // IK_B_pub
-  i: number
+  ES_B_pub: Uint8Array,    // Peer's ephemeral seed public
+  IK_A_sk: Uint8Array,     // My identity secret (X25519)
+  IK_B_pub: Uint8Array,    // Peer's identity public
+  i: number                // Counter value
 ): Promise<Uint8Array> {
   // seed = X25519(IK_A_sk, ES_B_pub)
-  const seed = nacl.scalarMult(myIdentitySecret, peerEphemeralSeedPub);
+  const seed = nacl.scalarMult(IK_A_sk, ES_B_pub);
 
   // PRK = HKDF-Extract("ladder-seed-v1", seed)
   const prk = await hkdfExtract(te.encode("ladder-seed-v1"), seed);
 
-  // info = "ladder-opk" || FPR(IK_B_pub) || LE32(i)
-  const fpr = await sha256(peerIdentityPub);
+  // info = "ladder-opk" || SHA256(IK_B_pub) || LE32(i)
+  const fpr = await sha256(IK_B_pub);
   const iBuf = new Uint8Array(4);
   new DataView(iBuf.buffer).setUint32(0, i, true);
   const info = new Uint8Array("ladder-opk".length + fpr.length + 4);
@@ -263,23 +284,24 @@ export async function deriveOPKPublic_Initiator(
   info.set(fpr, "ladder-opk".length);
   info.set(iBuf, "ladder-opk".length + fpr.length);
 
-  const sk_i_raw = await hkdfExpand(prk, info, 32);
-  const sk_i = clamp25519(sk_i_raw);
-  return nacl.scalarMult.base(sk_i); // OPK_i_public
+  const SK_i = clamp25519(await hkdfExpand(prk, info, 32));
+  return nacl.scalarMult.base(SK_i); // PK_i = X25519(SK_i, BasePoint)
 }
 
 // Responder (Bob) computes OPK SECRET for index i
 export async function deriveOPKSecret_Responder(
-  myEphemeralSeedSecret: Uint8Array, // ES_B_sk
-  peerIdentityPub: Uint8Array,       // IK_A_pub
-  i: number
+  ES_B_sk: Uint8Array,     // My ephemeral seed secret
+  IK_A_pub: Uint8Array,    // Peer's identity public
+  i: number                // Counter value
 ): Promise<Uint8Array> {
   // seed = X25519(ES_B_sk, IK_A_pub)
-  const seed = nacl.scalarMult(myEphemeralSeedSecret, peerIdentityPub);
+  const seed = nacl.scalarMult(ES_B_sk, IK_A_pub);
 
+  // PRK = HKDF-Extract("ladder-seed-v1", seed)
   const prk = await hkdfExtract(te.encode("ladder-seed-v1"), seed);
 
-  const fpr = await sha256(peerIdentityPub);
+  // info = "ladder-opk" || SHA256(IK_A_pub) || LE32(i)
+  const fpr = await sha256(IK_A_pub);
   const iBuf = new Uint8Array(4);
   new DataView(iBuf.buffer).setUint32(0, i, true);
   const info = new Uint8Array("ladder-opk".length + fpr.length + 4);
@@ -287,8 +309,7 @@ export async function deriveOPKSecret_Responder(
   info.set(fpr, "ladder-opk".length);
   info.set(iBuf, "ladder-opk".length + fpr.length);
 
-  const sk_i_raw = await hkdfExpand(prk, info, 32);
-  return clamp25519(sk_i_raw); // OPK_i_secret
+  return clamp25519(await hkdfExpand(prk, info, 32)); // SK_i
 }
 ```
 
@@ -307,30 +328,29 @@ export async function createLadderMessage(
   const sessionEphemeral = nacl.box.keyPair();
   
   // Derive their OPK public key for this index
-  const theirOPK_pub = await deriveOPKPublic_Initiator(
+  const OPK_B_i_pub = await deriveOPKPublic_Initiator(
     theirEphemeralSeed,         // ES_B_pub
     myIdentity.secretKey,       // IK_A_sk
     theirIdentityKey,           // IK_B_pub
     index
   );
   
-  // Compute DH operations
+  // Compute 3DH operations (fixed order)
   const dh1 = nacl.box.before(theirIdentityKey, myIdentity.secretKey);
   const dh2 = nacl.box.before(theirIdentityKey, sessionEphemeral.secretKey);
-  const dh3 = nacl.box.before(theirOPK_pub, sessionEphemeral.secretKey);
+  const dh3 = nacl.box.before(OPK_B_i_pub, sessionEphemeral.secretKey);
   
-  // Derive shared secret
+  // DH_concat = DH1 || DH2 || DH3
   const concat = new Uint8Array(96);
   concat.set(dh1, 0);
   concat.set(dh2, 32);
   concat.set(dh3, 64);
   
-  const salt = new TextEncoder().encode("ladder-v1");
-  const sk = await hkdfExtract(salt, concat);
+  // SK = HKDF-Extract("ladder-v1", DH_concat)
+  const sk = await hkdfExtract(te.encode("ladder-v1"), concat);
   
-  // Derive initial ratchet keys
-  const info = new TextEncoder().encode("dr-init-v1");
-  const keys = await hkdfExpand(sk, info, 64);
+  // RK0 || CKs0 = HKDF-Expand(SK, "dr-init-v1", 64)
+  const keys = await hkdfExpand(sk, te.encode("dr-init-v1"), 64);
   
   // Initialize ratchet and encrypt
   const ratchetState = initializeRatchetFromLadder(
@@ -368,28 +388,28 @@ export async function processLadderMessage(
   message: LadderMessage
 ): Promise<Uint8Array> {
   // Derive my OPK secret for this index
-  const myOPK_secret = await deriveOPKSecret_Responder(
+  const SK_i = await deriveOPKSecret_Responder(
     myEphemeralSeed.secretKey,    // ES_B_sk
     message.senderIdentityKey,     // IK_A_pub
     message.opkIndex
   );
   
-  // Compute same DH operations (from Bob's perspective)
+  // Compute same 3DH operations (from Bob's perspective)
   const dh1 = nacl.box.before(message.senderIdentityKey, myIdentity.secretKey);
   const dh2 = nacl.box.before(message.senderEphemeralKey, myIdentity.secretKey);
-  const dh3 = nacl.box.before(message.senderEphemeralKey, myOPK_secret);
+  const dh3 = nacl.box.before(message.senderEphemeralKey, SK_i);
   
-  // Derive shared secret (same as Alice)
+  // DH_concat = DH1 || DH2 || DH3
   const concat = new Uint8Array(96);
   concat.set(dh1, 0);
   concat.set(dh2, 32);
   concat.set(dh3, 64);
   
-  const salt = new TextEncoder().encode("ladder-v1");
-  const sk = await hkdfExtract(salt, concat);
+  // SK = HKDF-Extract("ladder-v1", DH_concat)
+  const sk = await hkdfExtract(te.encode("ladder-v1"), concat);
   
-  const info = new TextEncoder().encode("dr-init-v1");
-  const keys = await hkdfExpand(sk, info, 64);
+  // RK0 || CKs0 = HKDF-Expand(SK, "dr-init-v1", 64)
+  const keys = await hkdfExpand(sk, te.encode("dr-init-v1"), 64);
   
   // Initialize ratchet and decrypt
   const ratchetState = initializeRatchetFromLadder(
@@ -410,7 +430,7 @@ export async function processLadderMessage(
   dh2.fill(0);
   dh3.fill(0);
   concat.fill(0);
-  myOPK_secret.fill(0);
+  SK_i.fill(0);
   
   return decrypted;
 }
@@ -505,66 +525,43 @@ export function initializeRatchetFromLadder(
 
 ### Phase 5: Update Key Management
 
-#### 3.7 Extended Key Storage
+#### 3.7 Key Storage
 **File**: `src/hooks/useKeyManagement.ts`
 ```typescript
 interface ExtendedKeyPair {
-  identity: KeyPair;
-  ephemeralSeed: KeyPair;  // Used as ladder seed
+  identity: KeyPair;         // IK_dh (X25519)
+  ephemeralSeed: KeyPair;    // ES (X25519) for ladder seed
 }
 
 // Generate extended keypair
 const generateExtendedKeyPair = (): ExtendedKeyPair => {
   return {
-    identity: nacl.box.keyPair(),
-    ephemeralSeed: nacl.box.keyPair()
+    identity: nacl.box.keyPair(),        // X25519
+    ephemeralSeed: nacl.box.keyPair()    // X25519
   };
 };
 
-// Format for sharing (128 bytes with signature)
+// Format for sharing (64 bytes - out-of-band trust)
 const formatPublicKeyBundle = (extended: ExtendedKeyPair): Uint8Array => {
-  const identityPub = extended.identity.publicKey;
-  const ephemeralPub = extended.ephemeralSeed.publicKey;
-  
-  // Create signed bundle
-  const message = new Uint8Array(te.encode("ladder-bundle-v1").length + 64);
-  message.set(te.encode("ladder-bundle-v1"), 0);
-  message.set(identityPub, te.encode("ladder-bundle-v1").length);
-  message.set(ephemeralPub, te.encode("ladder-bundle-v1").length + 32);
-  
-  const signature = nacl.sign.detached(message, extended.identity.secretKey);
-  
-  const bundle = new Uint8Array(128);
-  bundle.set(identityPub, 0);
-  bundle.set(ephemeralPub, 32);
-  bundle.set(signature, 64);
+  const bundle = new Uint8Array(64);
+  bundle.set(extended.identity.publicKey, 0);      // IK_dh_pub (32 bytes)
+  bundle.set(extended.ephemeralSeed.publicKey, 32); // ES_pub (32 bytes)
   return bundle;
 };
 
-// Parse and verify received bundle
+// Parse received bundle (no verification - out-of-band trust)
 const parsePublicKeyBundle = (bundle: Uint8Array): {
   identityKey: Uint8Array;
   ephemeralSeed: Uint8Array;
 } => {
-  if (bundle.length !== 128) {
+  if (bundle.length !== 64) {
     throw new Error('Invalid key bundle size');
   }
   
-  const identityKey = bundle.slice(0, 32);
-  const ephemeralSeed = bundle.slice(32, 64);
-  const signature = bundle.slice(64, 128);
-  
-  // Verify signature
-  const message = new Uint8Array(te.encode("ladder-bundle-v1").length + 64);
-  message.set(te.encode("ladder-bundle-v1"), 0);
-  message.set(identityKey, te.encode("ladder-bundle-v1").length);
-  message.set(ephemeralSeed, te.encode("ladder-bundle-v1").length + 32);
-  
-  if (!nacl.sign.detached.verify(message, signature, identityKey)) {
-    throw new Error('Invalid bundle signature');
-  }
-  
-  return { identityKey, ephemeralSeed };
+  return {
+    identityKey: bundle.slice(0, 32),    // IK_dh_pub
+    ephemeralSeed: bundle.slice(32, 64)  // ES_pub
+  };
 };
 ```
 
@@ -720,12 +717,28 @@ export function decodeLadderMessage(
 describe('Ladder Protocol', () => {
   describe('OPK Derivation', () => {
     test('derives deterministic keys from seed and index', async () => {
-      const seed = nacl.box.keyPair();
-      const identity = nacl.box.keyPair();
+      const aliceIK_dh = nacl.box.keyPair();
+      const bobIK_dh = nacl.box.keyPair();
+      const bobES = nacl.box.keyPair();
       
-      const opk1 = await deriveOPKPublic(seed.publicKey, identity.secretKey, 1);
-      const opk2 = await deriveOPKPublic(seed.publicKey, identity.secretKey, 2);
-      const opk1_again = await deriveOPKPublic(seed.publicKey, identity.secretKey, 1);
+      const opk1 = await deriveOPKPublic_Initiator(
+        bobES.publicKey,          // ES_B_pub
+        aliceIK_dh.secretKey,     // IK_A_dh_sk
+        bobIK_dh.publicKey,       // IK_B_dh_pub
+        1
+      );
+      const opk2 = await deriveOPKPublic_Initiator(
+        bobES.publicKey,
+        aliceIK_dh.secretKey,
+        bobIK_dh.publicKey,
+        2
+      );
+      const opk1_again = await deriveOPKPublic_Initiator(
+        bobES.publicKey,
+        aliceIK_dh.secretKey,
+        bobIK_dh.publicKey,
+        1
+      );
       
       expect(opk1).not.toEqual(opk2);
       expect(opk1).toEqual(opk1_again); // Deterministic
@@ -757,12 +770,14 @@ describe('Ladder Protocol', () => {
   describe('Message Exchange', () => {
     test('Alice and Bob can exchange messages without round trips', async () => {
       const alice = {
-        identity: nacl.box.keyPair(),
+        identityDH: nacl.box.keyPair(),
+        identitySig: nacl.sign.keyPair(),
         ephemeralSeed: nacl.box.keyPair()
       };
       
       const bob = {
-        identity: nacl.box.keyPair(),
+        identityDH: nacl.box.keyPair(),
+        identitySig: nacl.sign.keyPair(),
         ephemeralSeed: nacl.box.keyPair()
       };
       
@@ -771,9 +786,9 @@ describe('Ladder Protocol', () => {
       
       // Alice creates complete message with embedded PreKeyInit
       const ladderMessage = await createLadderMessage(
-        alice.identity,
+        alice.identityDH,
         alice.ephemeralSeed,
-        bob.identity.publicKey,
+        bob.identityDH.publicKey,
         bob.ephemeralSeed.publicKey,
         index,
         plaintext
@@ -781,7 +796,7 @@ describe('Ladder Protocol', () => {
       
       // Bob processes the message (no round trip needed)
       const decrypted = await processLadderMessage(
-        bob.identity,
+        bob.identityDH,
         bob.ephemeralSeed,
         ladderMessage
       );
@@ -792,12 +807,14 @@ describe('Ladder Protocol', () => {
     
     test('Message format is self-contained', async () => {
       const alice = {
-        identity: nacl.box.keyPair(),
+        identityDH: nacl.box.keyPair(),
+        identitySig: nacl.sign.keyPair(),
         ephemeralSeed: nacl.box.keyPair()
       };
       
       const bob = {
-        identity: nacl.box.keyPair(),
+        identityDH: nacl.box.keyPair(),
+        identitySig: nacl.sign.keyPair(),
         ephemeralSeed: nacl.box.keyPair()
       };
       
@@ -805,9 +822,9 @@ describe('Ladder Protocol', () => {
       
       // Create message
       const ladderMessage = await createLadderMessage(
-        alice.identity,
+        alice.identityDH,
         alice.ephemeralSeed,
-        bob.identity.publicKey,
+        bob.identityDH.publicKey,
         bob.ephemeralSeed.publicKey,
         1,
         plaintext
@@ -816,7 +833,7 @@ describe('Ladder Protocol', () => {
       // Verify message contains all needed data
       expect(ladderMessage.version).toBe(1);
       expect(ladderMessage.opkIndex).toBe(1);
-      expect(ladderMessage.senderIdentityKey).toEqual(alice.identity.publicKey);
+      expect(ladderMessage.senderIdentityDHKey).toEqual(alice.identityDH.publicKey);
       expect(ladderMessage.senderEphemeralKey).toBeDefined();
       expect(ladderMessage.encryptedPayload).toBeDefined();
       
@@ -865,13 +882,13 @@ describe('Ladder Protocol', () => {
 
 ## 7. Protocol Constants
 
-### 7.1 Stable Labels
+### 7.1 Stable Labels (ASCII exact)
 These labels must remain constant for protocol compatibility:
-- `"ladder-bundle-v1"` - Bundle signature context
-- `"ladder-seed-v1"` - OPK seed derivation salt
-- `"ladder-opk"` - OPK derivation info prefix  
-- `"ladder-v1"` - DH concatenation salt
-- `"dr-init-v1"` - Double Ratchet initialization info
+- `"ladder-bundle-v1"` - Bundle tag (no signature used)
+- `"ladder-seed-v1"` - HKDF-Extract salt for ladder seed
+- `"ladder-opk"` - HKDF info prefix for OPK_i
+- `"ladder-v1"` - HKDF-Extract salt for handshake DHs
+- `"dr-init-v1"` - HKDF-Expand info for RK0||CKs0
 
 ## 8. Security Properties
 
