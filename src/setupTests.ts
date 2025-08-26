@@ -7,13 +7,15 @@ global.TextEncoder = TextEncoder as any;
 global.TextDecoder = TextDecoder as any;
 
 // Mock crypto API for tests
+const webcrypto = crypto.webcrypto || (crypto as any);
 Object.defineProperty(global, 'crypto', {
   value: {
     getRandomValues: (arr: Uint8Array) => {
       const bytes = crypto.randomBytes(arr.length);
       arr.set(bytes);
       return arr;
-    }
+    },
+    subtle: webcrypto.subtle
   }
 });
 
