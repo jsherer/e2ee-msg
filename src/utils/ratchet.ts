@@ -102,6 +102,7 @@ export function initializeRatchet(
     theirIdentityPublicKey,
     myCurrentEphemeralKeyPair: ephemeralKeyPair,
     theirLatestEphemeralPublicKey: null,
+    hasRatchetedForTheirEphemeral: false,
     rootKey,
     sendingChainKey,
     receivingChainKey,
@@ -109,6 +110,7 @@ export function initializeRatchet(
     receiveMessageCounter: 0,
     previousSendCounter: 0,
     skippedMessageKeys: new Map(),
+    previousReceivingChains: new Map(),
     isInitialized: true
   };
 }
@@ -116,36 +118,63 @@ export function initializeRatchet(
 /**
  * Skip message keys for out-of-order messages
  */
-function skipMessageKeys(state: RatchetState, from: number, to: number): void {
+function skipMessageKeys(
+  state: RatchetState, 
+  from: number, 
+  to: number,
+  ephemeralKey?: Uint8Array,
+  chainKey?: Uint8Array
+): void {
   if (to - from > MAX_SKIP) {
     throw new Error(`Too many messages skipped (${to - from} > ${MAX_SKIP})`);
   }
   
-  let chainKey = state.receivingChainKey;
+  // Use provided chain key or current receiving chain key
+  let currentChainKey = chainKey || state.receivingChainKey;
+  
+  // Use provided ephemeral key or current ephemeral key for key naming
+  const ephemeralForKey = ephemeralKey || state.theirLatestEphemeralPublicKey;
+  
   for (let i = from; i < to; i++) {
-    const [messageKey, nextChainKey] = kdfChainKey(chainKey);
-    const key = state.theirLatestEphemeralPublicKey ? 
-      `${Array.from(state.theirLatestEphemeralPublicKey).join(',')}-${i}` : 
+    const [messageKey, nextChainKey] = kdfChainKey(currentChainKey);
+    const key = ephemeralForKey ? 
+      `${Array.from(ephemeralForKey).join(',')}-${i}` : 
       `null-${i}`;
     state.skippedMessageKeys.set(key, messageKey);
-    chainKey = nextChainKey;
+    currentChainKey = nextChainKey;
   }
-  state.receivingChainKey = chainKey;
+  
+  // Only update receiving chain key if we're using the current chain
+  if (!chainKey) {
+    state.receivingChainKey = currentChainKey;
+  }
 }
 
 /**
  * Encrypt a message using the ratchet
  */
 export function ratchetEncrypt(state: RatchetState, plaintext: Uint8Array): [Uint8Array, RatchetState] {
-  // Clone state to avoid mutations
-  const newState = { ...state };
+  // Clone state to avoid mutations, including deep copy of Maps
+  const newState = { 
+    ...state,
+    skippedMessageKeys: new Map(state.skippedMessageKeys),
+    previousReceivingChains: new Map(
+      Array.from(state.previousReceivingChains.entries()).map(([k, v]) => [k, {
+        chainKey: new Uint8Array(v.chainKey),
+        messageCounter: v.messageCounter
+      }])
+    )
+  };
   
-  // Perform DH ratchet if we have their ephemeral key
+  // Perform DH ratchet if we have their ephemeral key AND haven't ratcheted for it yet
   // This means we're sending AFTER having received at least one message from them
-  if (newState.theirLatestEphemeralPublicKey) {
+  if (newState.theirLatestEphemeralPublicKey && !newState.hasRatchetedForTheirEphemeral) {
     
     // Save the current send counter as previous before ratcheting
     newState.previousSendCounter = newState.sendMessageCounter;
+    
+    // Mark that we've ratcheted for their current ephemeral
+    newState.hasRatchetedForTheirEphemeral = true;
     
     // Generate new ephemeral key pair for this ratchet step
     const newEphemeralKeyPair = nacl.box.keyPair();
@@ -216,10 +245,16 @@ export function ratchetEncrypt(state: RatchetState, plaintext: Uint8Array): [Uin
  * Decrypt a message using the ratchet
  */
 export function ratchetDecrypt(state: RatchetState, message: Uint8Array): [Uint8Array, RatchetState] {
-  // Clone state to avoid mutations
+  // Clone state to avoid mutations, including deep copy of Maps
   const newState = { 
     ...state,
-    skippedMessageKeys: new Map(state.skippedMessageKeys)
+    skippedMessageKeys: new Map(state.skippedMessageKeys),
+    previousReceivingChains: new Map(
+      Array.from(state.previousReceivingChains.entries()).map(([k, v]) => [k, {
+        chainKey: new Uint8Array(v.chainKey),
+        messageCounter: v.messageCounter
+      }])
+    )
   };
   // Parse header
   if (message.length < 65) {
@@ -242,9 +277,33 @@ export function ratchetDecrypt(state: RatchetState, message: Uint8Array): [Uint8
     !constantTimeEqual(theirEphemeralPublicKey, newState.theirLatestEphemeralPublicKey);
   
   if (hasNewEphemeral) {
-    // Save any skipped messages from the old chain before ratcheting  
+    // Save the old receiving chain before we lose it
     if (newState.theirLatestEphemeralPublicKey && previousCounter > 0) {
-      skipMessageKeys(newState, newState.receiveMessageCounter, previousCounter);
+      // Store the old chain state for future out-of-order messages
+      const oldEphemeralKey = newState.theirLatestEphemeralPublicKey;
+      const oldEphemeralKeyStr = Array.from(oldEphemeralKey).join(',');
+      
+      // We need to save the current chain state BEFORE skipping
+      // because we might need to derive keys from any point in the chain
+      const currentChainKey = new Uint8Array(newState.receivingChainKey);
+      const currentCounter = newState.receiveMessageCounter;
+      
+      // Skip any remaining messages in the old chain
+      // Use a copy of the chain key so we don't modify the original
+      let tempChainKey = new Uint8Array(currentChainKey);
+      for (let i = currentCounter; i < previousCounter; i++) {
+        const [messageKey, nextChainKey] = kdfChainKey(tempChainKey);
+        const key = `${oldEphemeralKeyStr}-${i}`;
+        newState.skippedMessageKeys.set(key, messageKey);
+        tempChainKey = new Uint8Array(nextChainKey);
+      }
+      
+      // Store the old chain at its ORIGINAL position
+      // This allows us to derive keys for any messages we haven't seen yet
+      newState.previousReceivingChains.set(oldEphemeralKeyStr, {
+        chainKey: currentChainKey,
+        messageCounter: currentCounter
+      });
     }
     
     // Check if we need to perform a DH ratchet
@@ -261,6 +320,8 @@ export function ratchetDecrypt(state: RatchetState, message: Uint8Array): [Uint8
     
     // Store their new ephemeral
     newState.theirLatestEphemeralPublicKey = new Uint8Array(theirEphemeralPublicKey);
+    // Reset the ratchet flag since we have a new ephemeral from them
+    newState.hasRatchetedForTheirEphemeral = false;
     
     // Perform DH ratchet if needed
     if (shouldRatchet) {
@@ -285,22 +346,67 @@ export function ratchetDecrypt(state: RatchetState, message: Uint8Array): [Uint8
     }
   }
   
-  // Skip any missing messages in the current chain
-  skipMessageKeys(newState, newState.receiveMessageCounter, messageCounter);
+  // Check if this message is from the current chain or a previous chain
+  const ephemeralKeyStr = Array.from(theirEphemeralPublicKey).join(',');
+  const currentEphemeralStr = newState.theirLatestEphemeralPublicKey ? 
+    Array.from(newState.theirLatestEphemeralPublicKey).join(',') : 'null';
+  
+  const isCurrentChain = ephemeralKeyStr === currentEphemeralStr;
   
   // Try to find the message key in skipped keys first
-  const skippedKey = `${Array.from(theirEphemeralPublicKey).join(',')}-${messageCounter}`;
+  const skippedKey = `${ephemeralKeyStr}-${messageCounter}`;
   
   let messageKey: Uint8Array;
   if (newState.skippedMessageKeys.has(skippedKey)) {
+    // Use previously skipped key
     messageKey = newState.skippedMessageKeys.get(skippedKey)!;
     newState.skippedMessageKeys.delete(skippedKey);
-  } else {
+  } else if (isCurrentChain) {
+    // Message is from current chain - skip any missing messages and derive key
+    skipMessageKeys(newState, newState.receiveMessageCounter, messageCounter);
+    
     // Derive message key from current receiving chain
     const [derivedKey, nextChainKey] = kdfChainKey(newState.receivingChainKey);
     messageKey = derivedKey;
     newState.receivingChainKey = nextChainKey;
     newState.receiveMessageCounter = messageCounter + 1;
+  } else {
+    // Message is from a previous chain
+    const previousChain = newState.previousReceivingChains.get(ephemeralKeyStr);
+    
+    if (!previousChain) {
+      throw new Error('Message from unknown previous chain');
+    }
+    
+    // Skip any messages we haven't seen yet from this old chain
+    if (messageCounter >= previousChain.messageCounter) {
+      throw new Error('Message counter exceeds chain length');
+    }
+    
+    // Derive the key from the stored chain state
+    // We need to derive keys from where we left off to the target message
+    let chainKey = previousChain.chainKey;
+    let currentCounter = previousChain.messageCounter;
+    
+    // First, skip any messages between last known counter and target
+    for (let i = currentCounter; i < messageCounter; i++) {
+      const [msgKey, nextChainKey] = kdfChainKey(chainKey);
+      const skipKey = `${ephemeralKeyStr}-${i}`;
+      if (!newState.skippedMessageKeys.has(skipKey)) {
+        newState.skippedMessageKeys.set(skipKey, msgKey);
+      }
+      chainKey = new Uint8Array(nextChainKey);
+    }
+    
+    // Now derive the actual message key
+    const [derivedKey, nextChainKey] = kdfChainKey(chainKey);
+    messageKey = derivedKey;
+    
+    // Update the stored chain state
+    newState.previousReceivingChains.set(ephemeralKeyStr, {
+      chainKey: new Uint8Array(nextChainKey),
+      messageCounter: messageCounter + 1
+    });
   }
   
   // Decrypt
@@ -334,6 +440,7 @@ export function serializeRatchetState(state: RatchetState, masterKey: string): s
     },
     theirLatestEphemeralPublicKey: state.theirLatestEphemeralPublicKey ? 
       Array.from(state.theirLatestEphemeralPublicKey) : null,
+    hasRatchetedForTheirEphemeral: state.hasRatchetedForTheirEphemeral,
     rootKey: Array.from(state.rootKey),
     sendingChainKey: Array.from(state.sendingChainKey),
     receivingChainKey: Array.from(state.receivingChainKey),
@@ -341,6 +448,10 @@ export function serializeRatchetState(state: RatchetState, masterKey: string): s
     receiveMessageCounter: state.receiveMessageCounter,
     previousSendCounter: state.previousSendCounter,
     skippedMessageKeys: Array.from(state.skippedMessageKeys.entries()).map(([k, v]) => [k, Array.from(v)]),
+    previousReceivingChains: Array.from(state.previousReceivingChains.entries()).map(([k, v]) => [k, {
+      chainKey: Array.from(v.chainKey),
+      messageCounter: v.messageCounter
+    }]),
     isInitialized: state.isInitialized
   };
   
@@ -408,6 +519,7 @@ export function deserializeRatchetState(serialized: string, masterKey: string): 
       },
       theirLatestEphemeralPublicKey: stateObj.theirLatestEphemeralPublicKey ? 
         new Uint8Array(stateObj.theirLatestEphemeralPublicKey) : null,
+      hasRatchetedForTheirEphemeral: stateObj.hasRatchetedForTheirEphemeral || false,
       rootKey: new Uint8Array(stateObj.rootKey),
       sendingChainKey: new Uint8Array(stateObj.sendingChainKey),
       receivingChainKey: new Uint8Array(stateObj.receivingChainKey),
@@ -416,6 +528,14 @@ export function deserializeRatchetState(serialized: string, masterKey: string): 
       previousSendCounter: stateObj.previousSendCounter,
       skippedMessageKeys: new Map(stateObj.skippedMessageKeys.map(([k, v]: [string, number[]]) => 
         [k, new Uint8Array(v)])),
+      previousReceivingChains: new Map(
+        (stateObj.previousReceivingChains || []).map(([k, v]: [string, any]) => 
+          [k, {
+            chainKey: new Uint8Array(v.chainKey),
+            messageCounter: v.messageCounter
+          }]
+        )
+      ),
       isInitialized: stateObj.isInitialized
     };
   } catch (error) {

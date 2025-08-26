@@ -12,6 +12,7 @@ export interface RatchetState {
   // Ephemeral keys
   myCurrentEphemeralKeyPair: KeyPair;
   theirLatestEphemeralPublicKey: Uint8Array | null;
+  hasRatchetedForTheirEphemeral: boolean;  // Track if we've ratcheted for their current ephemeral
   
   // Chain keys
   rootKey: Uint8Array;           // 32 bytes
@@ -25,6 +26,13 @@ export interface RatchetState {
   
   // Skipped message keys (for out-of-order delivery)
   skippedMessageKeys: Map<string, Uint8Array>;
+  
+  // Previous receiving chains (for out-of-order messages across chain boundaries)
+  // Map from ephemeral public key string to chain state
+  previousReceivingChains: Map<string, {
+    chainKey: Uint8Array;
+    messageCounter: number;
+  }>;
   
   // Session state
   isInitialized: boolean;
