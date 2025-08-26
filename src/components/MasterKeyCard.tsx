@@ -2,17 +2,13 @@ import React, { useState } from 'react';
 
 interface MasterKeyCardProps {
   masterKey: string;
-  onLock: () => void;
   onChangeMasterKey?: (newMasterKey: string) => Promise<boolean>;
-  isLocking?: boolean;
   isChangingMasterKey?: boolean;
 }
 
 export const MasterKeyCard: React.FC<MasterKeyCardProps> = ({ 
   masterKey, 
-  onLock, 
   onChangeMasterKey,
-  isLocking = false,
   isChangingMasterKey = false
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -20,11 +16,6 @@ export const MasterKeyCard: React.FC<MasterKeyCardProps> = ({
   const [newMasterKey, setNewMasterKey] = useState('');
   const [confirmMasterKey, setConfirmMasterKey] = useState('');
   const [error, setError] = useState('');
-  const handleLock = () => {
-    if (window.confirm('Lock the app?\n\nThis will clear your master key from memory. Your encrypted private key remains in the URL.\n\nContinue?')) {
-      onLock();
-    }
-  };
 
   const handleStartEdit = () => {
     setIsEditing(true);
@@ -100,57 +91,32 @@ export const MasterKeyCard: React.FC<MasterKeyCardProps> = ({
           gap: '8px'
         }}>
           <span style={{ color: '#4CAF50' }}>✓</span>
-          Master Key (Unlocked)
+          Master Key
         </h3>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {!isEditing && onChangeMasterKey && (
-            <button
-              onClick={handleStartEdit}
-              disabled={isChangingMasterKey}
-              title="Change master key"
-              style={{
-                background: 'white',
-                border: '1px solid #e0e0e0',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                color: '#666',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.2s'
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.borderColor = '#2196F3')}
-              onMouseOut={(e) => (e.currentTarget.style.borderColor = '#e0e0e0')}
-            >
-              ✏️ Change
-            </button>
-          )}
+        {!isEditing && onChangeMasterKey && (
           <button
-            onClick={handleLock}
-            disabled={isLocking || isEditing}
-            title="Lock the app"
+            onClick={handleStartEdit}
+            disabled={isChangingMasterKey}
+            title="Change master key"
             style={{
-              background: isLocking ? '#FFA500' : 'white',
+              background: 'white',
               border: '1px solid #e0e0e0',
               borderRadius: '6px',
               padding: '4px 10px',
-              cursor: isLocking || isEditing ? 'not-allowed' : 'pointer',
+              cursor: 'pointer',
               fontSize: '13px',
-              color: isLocking ? 'white' : '#666',
+              color: '#666',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              transition: 'all 0.2s',
-              opacity: isEditing ? 0.5 : 1
+              transition: 'all 0.2s'
             }}
-            onMouseOver={(e) => !isLocking && !isEditing && (e.currentTarget.style.borderColor = '#f44336')}
-            onMouseOut={(e) => !isLocking && !isEditing && (e.currentTarget.style.borderColor = '#e0e0e0')}
+            onMouseOver={(e) => (e.currentTarget.style.borderColor = '#2196F3')}
+            onMouseOut={(e) => (e.currentTarget.style.borderColor = '#e0e0e0')}
           >
-            🔒 {isLocking ? 'Locking...' : 'Lock'}
+            ✏️ Change
           </button>
-        </div>
+        )}
       </div>
       
       {isEditing ? (

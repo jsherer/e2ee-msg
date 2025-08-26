@@ -91,6 +91,27 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDestroy = () => {
+    if (window.confirm('Destroy everything and start fresh?\n\nThis will:\n• Clear all ratchet sessions\n• Reset all controls\n• Clear your keys and master key\n• Return to the lock screen\n\nYou will lose EVERYTHING and start completely fresh.\n\nContinue?')) {
+      // Clear all sessions
+      clearAllSessions();
+      
+      // Reset controls
+      setRecipientPublicKey('');
+      setMessage('');
+      setUseRatchet(false);
+      
+      // Clear URL fragment (replaceState to avoid history entry)
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      
+      // Reset waiting state for fresh start
+      setWaitingForMasterKey(false);
+      
+      // Lock the app - this will clear master key and set masterKeyLocked to false
+      lockApp();
+    }
+  };
+
   const copyPublicKey = async () => {
     const keyToCopy = publicKeyDisplay || keypairDisplay?.publicKey;
     if (displayFormat === 'qr' && keyToCopy) {
@@ -118,7 +139,7 @@ const App: React.FC = () => {
   };
 
   const handleFreshStart = () => {
-    window.location.hash = '';
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
     setWaitingForMasterKey(false);
   };
 
@@ -148,10 +169,65 @@ const App: React.FC = () => {
         margin: '0 auto',
         padding: '20px'
       }}>
+        {/* Control Panel */}
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          padding: '12px 20px',
+          marginBottom: '20px',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <button
+            onClick={lockApp}
+            disabled={isLocking}
+            title="Lock the app"
+            style={{
+              background: isLocking ? '#FFA500' : 'white',
+              border: '1px solid #e0e0e0',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              cursor: isLocking ? 'not-allowed' : 'pointer',
+              fontSize: '13px',
+              color: isLocking ? 'white' : '#666',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={(e) => !isLocking && (e.currentTarget.style.borderColor = '#f44336')}
+            onMouseOut={(e) => !isLocking && (e.currentTarget.style.borderColor = '#e0e0e0')}
+          >
+            🔒 {isLocking ? 'Locking...' : 'Lock'}
+          </button>
+          
+          <button
+            onClick={handleDestroy}
+            title="Destroy all sessions and reset"
+            style={{
+              background: 'white',
+              border: '1px solid #e0e0e0',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: '#666',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.borderColor = '#ff9800')}
+            onMouseOut={(e) => (e.currentTarget.style.borderColor = '#e0e0e0')}
+          >
+            💣 Destroy
+          </button>
+        </div>
+
         <MasterKeyCard 
           masterKey={masterKey} 
-          onLock={lockApp} 
-          isLocking={isLocking}
           onChangeMasterKey={changeMasterKey}
           isChangingMasterKey={isSavingKeys}
         />

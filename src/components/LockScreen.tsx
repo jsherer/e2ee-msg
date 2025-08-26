@@ -19,12 +19,20 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   isUnlocking
 }) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [masterKeyConfirm, setMasterKeyConfirm] = useState('');
 
   const handleSubmit = async () => {
     if (masterKey.length < 12) {
       alert('Master key must be at least 12 characters long');
       return;
     }
+    
+    // Check confirmation for new master key (only required when creating new)
+    if (!waitingForMasterKey && masterKey.length >= 12 && masterKey !== masterKeyConfirm) {
+      alert('Master keys do not match. Please confirm your master key.');
+      return;
+    }
+    
     const success = await onUnlock();
     if (success) {
       setIsUnlocked(true);
@@ -133,7 +141,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
           type="password"
           value={masterKey}
           onChange={(e) => setMasterKey(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && !isUnlocking && !isUnlocked && handleSubmit()}
+          onKeyPress={(e) => e.key === 'Enter' && !isUnlocking && !isUnlocked && (waitingForMasterKey || masterKeyConfirm) && handleSubmit()}
           placeholder={waitingForMasterKey ? "Enter your master key" : "Choose a strong master key"}
           autoFocus
           disabled={isUnlocking || isUnlocked}
@@ -144,25 +152,47 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             fontSize: '16px',
             border: '2px solid #ddd',
             borderRadius: '6px',
-            marginBottom: '15px',
+            marginBottom: waitingForMasterKey ? '15px' : '10px',
             boxSizing: 'border-box',
             opacity: isUnlocking || isUnlocked ? 0.6 : 1
           }}
         />
         
+        {!waitingForMasterKey && masterKey.length >= 12 && (
+          <input
+            type="password"
+            value={masterKeyConfirm}
+            onChange={(e) => setMasterKeyConfirm(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && !isUnlocking && !isUnlocked && handleSubmit()}
+            placeholder="Confirm your master key"
+            disabled={isUnlocking || isUnlocked}
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontFamily: 'monospace',
+              fontSize: '16px',
+              border: '2px solid #ddd',
+              borderRadius: '6px',
+              marginBottom: '15px',
+              boxSizing: 'border-box',
+              opacity: isUnlocking || isUnlocked ? 0.6 : 1
+            }}
+          />
+        )}
+        
         <button
           onClick={handleSubmit}
-          disabled={!masterKey || masterKey.length < 12 || isUnlocking || isUnlocked}
+          disabled={!masterKey || masterKey.length < 12 || (!waitingForMasterKey && masterKey.length >= 12 && masterKey !== masterKeyConfirm) || isUnlocking || isUnlocked}
           style={{
             width: '100%',
             padding: '12px',
-            backgroundColor: isUnlocked ? '#4CAF50' : isUnlocking ? '#FFA500' : (masterKey && masterKey.length >= 12 ? '#4CAF50' : '#ccc'),
+            backgroundColor: isUnlocked ? '#4CAF50' : isUnlocking ? '#FFA500' : (masterKey && masterKey.length >= 12 && (waitingForMasterKey || masterKey === masterKeyConfirm) ? '#4CAF50' : '#ccc'),
             color: 'white',
             border: 'none',
             borderRadius: '6px',
             fontSize: '16px',
             fontWeight: 'bold',
-            cursor: isUnlocked || isUnlocking ? 'wait' : (masterKey && masterKey.length >= 12 ? 'pointer' : 'not-allowed'),
+            cursor: isUnlocked || isUnlocking ? 'wait' : (masterKey && masterKey.length >= 12 && (waitingForMasterKey || masterKey === masterKeyConfirm) ? 'pointer' : 'not-allowed'),
             transition: 'background-color 0.2s'
           }}
         >
@@ -217,9 +247,19 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                 {masterKey.length}/12 characters minimum
               </span>
             ) : masterKey.length >= 12 ? (
-              <span style={{ color: '#4CAF50' }}>
-                ✓ Strong key - ready to start
-              </span>
+              masterKeyConfirm.length === 0 ? (
+                <span style={{ color: '#2196F3' }}>
+                  Enter your master key again to confirm
+                </span>
+              ) : masterKey !== masterKeyConfirm ? (
+                <span style={{ color: '#ff9800' }}>
+                  Keys do not match
+                </span>
+              ) : (
+                <span style={{ color: '#4CAF50' }}>
+                  ✓ Strong key - ready to start
+                </span>
+              )
             ) : (
               'Use at least 12 characters for security'
             )}
