@@ -28,7 +28,7 @@ describe('LockScreen', () => {
   it('should render the lock screen for first-time users', () => {
     render(<LockScreen {...mockProps} />);
     
-    expect(screen.getByText('E2EE Local Messenger')).toBeInTheDocument();
+    expect(screen.getByText('E2EE Messenger')).toBeInTheDocument();
     expect(screen.getByText('Welcome to secure, local messaging')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Choose a strong master key')).toBeInTheDocument();
     expect(screen.getByText('Start Secure Session')).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe('LockScreen', () => {
   it('should render the lock screen for returning users', () => {
     render(<LockScreen {...mockProps} waitingForMasterKey={true} />);
     
-    expect(screen.getByText('E2EE Local Messenger')).toBeInTheDocument();
+    expect(screen.getByText('E2EE Messenger')).toBeInTheDocument();
     expect(screen.getByText('Enter your master key to unlock')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter your master key')).toBeInTheDocument();
     expect(screen.getByText('Unlock')).toBeInTheDocument();
