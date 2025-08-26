@@ -12,6 +12,11 @@ export interface KeyPairDisplay {
   secretKey: string;
 }
 
+export interface ExtendedKeyPair {
+  identity: KeyPair;
+  ephemeralSeed: KeyPair;
+}
+
 export type DisplayFormat = 'base32' | 'qr';
 
 export interface CryptoState {

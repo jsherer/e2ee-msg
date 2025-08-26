@@ -3,14 +3,13 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { KeyPair, KeyPairDisplay } from '../types';
+import { ExtendedKeyPair, KeyPair, KeyPairDisplay } from '../types';
 import {
   generateKeyPair,
   generateKeyPairFromSecretKey,
   encryptSecretKey,
   decryptSecretKey
 } from '../utils/crypto';
-import type { ExtendedKeyPair } from '../types/keys';
 import {
   uint8ArrayToBase32Crockford,
   base32CrockfordToUint8Array,
@@ -85,7 +84,7 @@ export const useKeyManagement = () => {
     }
   }, []);
 
-  const generateNewKeypair = useCallback(async () => {
+  const generateNewKeypair = useCallback(async (): Promise<KeyPair> => {
     const pair = generateKeyPair();
     const seed = generateKeyPair(); // Generate ephemeral seed for Ladder
     
@@ -125,11 +124,18 @@ export const useKeyManagement = () => {
       
       setKeypair(pair);
       
-      // Restore ephemeral seed if present (Ladder protocol)
+      // Restore ephemeral seed if present, or generate new one
+      let ephemeralSeed: KeyPair;
+      let needsUpdate = false;
       if (payload.data.ephemeralSeedSecret) {
         const seedSecretBytes = base32CrockfordToUint8Array(payload.data.ephemeralSeedSecret);
-        const seed = generateKeyPairFromSecretKey(seedSecretBytes);
-        setEphemeralSeed(seed);
+        ephemeralSeed = generateKeyPairFromSecretKey(seedSecretBytes);
+        setEphemeralSeed(ephemeralSeed);
+      } else {
+        // Generate new ephemeral seed for Ladder protocol
+        ephemeralSeed = generateKeyPair();
+        setEphemeralSeed(ephemeralSeed);
+        needsUpdate = true; // Need to save the new ephemeral seed
       }
       
       const publicKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
@@ -142,18 +148,23 @@ export const useKeyManagement = () => {
 
       setLastSeenSeq(payload.seq);
 
-      // Rotate the fragment with a fresh nonce
-      const rotated = await rotate(true);
-      history.replaceState(null, '', location.pathname + location.search + '#' + rotated);
+      if (needsUpdate) {
+        // Save with the new ephemeral seed
+        await saveKeysToUrl(pair, ephemeralSeed, passphrase);
+      } else {
+        // Rotate the fragment with a fresh nonce
+        const rotated = await rotate(true);
+        history.replaceState(null, '', location.pathname + location.search + '#' + rotated);
+      }
       
       return true;
     } catch (error) {
       console.error('Failed to restore from fragment:', error);
       return false;
     }
-  }, [lastSeenSeq]);
+  }, [lastSeenSeq, saveKeysToUrl]);
 
-  const handleMasterKeySubmit = useCallback(async () => {
+  const handleMasterKeySubmit = useCallback(async (): Promise<boolean> => {
     if (!masterKey || masterKey.length < 12) {
       return false;
     }
@@ -203,6 +214,10 @@ export const useKeyManagement = () => {
           setMasterKeyLocked(true);
           setIsUnlocking(false);
           return true;
+        } else {
+          alert('Invalid encrypted data format');
+          setIsUnlocking(false);
+          return false;
         }
       } catch (error) {
         console.error('Failed to restore from old format:', error);
@@ -214,15 +229,14 @@ export const useKeyManagement = () => {
     // No existing hash, generate new
     else {
       const pair = await generateNewKeypair();
-      await saveKeysToUrl(pair, ephemeralSeed, masterKey);
+      const seed = generateKeyPair(); // Generate ephemeral seed
+      setEphemeralSeed(seed);
+      await saveKeysToUrl(pair, seed, masterKey);
       setMasterKeyLocked(true);
       setIsUnlocking(false);
       return true;
     }
-    
-    setIsUnlocking(false);
-    return false;
-  }, [masterKey, tryRestoreFromFragment, saveKeysToUrl]);
+  }, [masterKey, tryRestoreFromFragment, saveKeysToUrl, generateNewKeypair]);
 
   const lockApp = useCallback(async () => {
     setIsLocking(true);
@@ -303,6 +317,11 @@ export const useKeyManagement = () => {
     return bundle;
   }, [keypair, ephemeralSeed]);
 
+  // Check if we have Ladder-compatible keys
+  const hasLadderKeys = useCallback((): boolean => {
+    return !!(keypair && ephemeralSeed);
+  }, [keypair, ephemeralSeed]);
+
   const changeMasterKey = useCallback(async (newMasterKey: string): Promise<boolean> => {
     if (!keypair || !masterKey || newMasterKey.length < 12) {
       return false;
@@ -342,5 +361,6 @@ export const useKeyManagement = () => {
     isLocking,
     changeMasterKey,
     formatPublicKeyBundle,
+    hasLadderKeys
   };
 };

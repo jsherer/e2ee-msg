@@ -69,16 +69,18 @@ export const useCrypto = (
       
       let encrypted: Uint8Array;
       if (useRatchetProtocol) {
-        // Use ratchet protocol
-        const encryptedData = encryptWithRatchet(message, recipientKey);
+        // Use ratchet protocol - extract identity key from bundle if needed
+        const identityKey = extractIdentityKey(recipientKey);
+        const encryptedData = encryptWithRatchet(message, identityKey);
         if (!encryptedData) {
           setOutput('Error: Ratchet encryption failed');
           return;
         }
         encrypted = encryptedData;
       } else {
-        // Use standard encryption
-        encrypted = encryptMessage(message, recipientKey, keypair.secretKey);
+        // Use standard encryption - extract identity key from bundle if needed
+        const identityKey = extractIdentityKey(recipientKey);
+        encrypted = encryptMessage(message, identityKey, keypair.secretKey);
       }
       
       const formattedOutput = formatInGroups(uint8ArrayToBase32Crockford(encrypted), true);
@@ -113,8 +115,9 @@ export const useCrypto = (
       
       let decrypted: string | null;
       if (isRatchetMessage || useRatchetProtocol) {
-        // Use ratchet protocol
-        decrypted = decryptWithRatchet(encryptedData, senderKey);
+        // Use ratchet protocol - extract identity key from bundle if needed
+        const identityKey = extractIdentityKey(senderKey);
+        decrypted = decryptWithRatchet(encryptedData, identityKey);
         if (!decrypted) {
           setOutput('Decryption failed: Invalid ratchet message or wrong keys');
         } else {
@@ -122,8 +125,9 @@ export const useCrypto = (
           onNonceUpdate();
         }
       } else {
-        // Use standard decryption
-        const decryptedMsg = decryptMessage(encryptedData, senderKey, keypair.secretKey);
+        // Use standard decryption - extract identity key from bundle if needed
+        const identityKey = extractIdentityKey(senderKey);
+        const decryptedMsg = decryptMessage(encryptedData, identityKey, keypair.secretKey);
         if (!decryptedMsg) {
           setOutput('Decryption failed: Invalid message or wrong keys');
         } else {
