@@ -10,6 +10,7 @@ import {
   encryptSecretKey,
   decryptSecretKey
 } from '../utils/crypto';
+import type { ExtendedKeyPair } from '../types/keys';
 import {
   uint8ArrayToBase32Crockford,
   base32CrockfordToUint8Array,
@@ -21,12 +22,15 @@ import { encryptToFragment, decryptFromFragment, PlainPayload } from '../utils/s
 interface KeyData {
   secretKey: string; // Base32 encoded secret key
   publicKey: string; // Base32 encoded public key
+  ephemeralSeedSecret?: string; // Base32 encoded ephemeral seed secret (Ladder)
+  ephemeralSeedPublic?: string; // Base32 encoded ephemeral seed public (Ladder)
   timestamp: number;
 }
 
 export const useKeyManagement = () => {
   const [keypair, setKeypair] = useState<KeyPair | null>(null);
   const [keypairDisplay, setKeypairDisplay] = useState<KeyPairDisplay | null>(null);
+  const [ephemeralSeed, setEphemeralSeed] = useState<KeyPair | null>(null);
   const [masterKey, setMasterKey] = useState('');
   const [masterKeyLocked, setMasterKeyLocked] = useState(false);
   const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
@@ -36,12 +40,14 @@ export const useKeyManagement = () => {
   const [isSavingKeys, setIsSavingKeys] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
 
-  const saveKeysToUrl = useCallback(async (pair: KeyPair, passphrase: string) => {
+  const saveKeysToUrl = useCallback(async (pair: KeyPair, seed: KeyPair | null, passphrase: string) => {
     setIsSavingKeys(true);
     try {
       const keyData: KeyData = {
         secretKey: uint8ArrayToBase32Crockford(pair.secretKey),
         publicKey: uint8ArrayToBase32Crockford(pair.publicKey),
+        ephemeralSeedSecret: seed ? uint8ArrayToBase32Crockford(seed.secretKey) : undefined,
+        ephemeralSeedPublic: seed ? uint8ArrayToBase32Crockford(seed.publicKey) : undefined,
         timestamp: Date.now()
       };
 
@@ -81,8 +87,10 @@ export const useKeyManagement = () => {
 
   const generateNewKeypair = useCallback(async () => {
     const pair = generateKeyPair();
+    const seed = generateKeyPair(); // Generate ephemeral seed for Ladder
     
     setKeypair(pair);
+    setEphemeralSeed(seed);
     
     const publicKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
     const secretKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
@@ -94,7 +102,7 @@ export const useKeyManagement = () => {
     
     // Save to URL if we have a master key (regeneration case)
     if (masterKey && masterKeyLocked) {
-      await saveKeysToUrl(pair, masterKey);
+      await saveKeysToUrl(pair, seed, masterKey);
     }
     
     return pair;
@@ -116,6 +124,13 @@ export const useKeyManagement = () => {
       const pair = generateKeyPairFromSecretKey(secretKeyBytes);
       
       setKeypair(pair);
+      
+      // Restore ephemeral seed if present (Ladder protocol)
+      if (payload.data.ephemeralSeedSecret) {
+        const seedSecretBytes = base32CrockfordToUint8Array(payload.data.ephemeralSeedSecret);
+        const seed = generateKeyPairFromSecretKey(seedSecretBytes);
+        setEphemeralSeed(seed);
+      }
       
       const publicKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
       const secretKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
@@ -180,8 +195,10 @@ export const useKeyManagement = () => {
             secretKey: secretKeyBase32
           });
           
-          // Migrate to new format
-          await saveKeysToUrl(pair, masterKey);
+          // Migrate to new format (generate ephemeral seed for Ladder)
+          const seed = generateKeyPair();
+          setEphemeralSeed(seed);
+          await saveKeysToUrl(pair, seed, masterKey);
           setWaitingForMasterKey(false);
           setMasterKeyLocked(true);
           setIsUnlocking(false);
@@ -197,11 +214,14 @@ export const useKeyManagement = () => {
     // No existing hash, generate new
     else {
       const pair = await generateNewKeypair();
-      await saveKeysToUrl(pair, masterKey);
+      await saveKeysToUrl(pair, ephemeralSeed, masterKey);
       setMasterKeyLocked(true);
       setIsUnlocking(false);
       return true;
     }
+    
+    setIsUnlocking(false);
+    return false;
   }, [masterKey, tryRestoreFromFragment, saveKeysToUrl]);
 
   const lockApp = useCallback(async () => {
@@ -274,6 +294,15 @@ export const useKeyManagement = () => {
     setNonceCounter(prev => prev + 1);
   };
 
+  // Format 64-byte bundle for Ladder protocol (IK_dh_pub || ES_pub)
+  const formatPublicKeyBundle = useCallback((): Uint8Array | null => {
+    if (!keypair || !ephemeralSeed) return null;
+    const bundle = new Uint8Array(64);
+    bundle.set(keypair.publicKey, 0);
+    bundle.set(ephemeralSeed.publicKey, 32);
+    return bundle;
+  }, [keypair, ephemeralSeed]);
+
   const changeMasterKey = useCallback(async (newMasterKey: string): Promise<boolean> => {
     if (!keypair || !masterKey || newMasterKey.length < 12) {
       return false;
@@ -281,7 +310,7 @@ export const useKeyManagement = () => {
 
     try {
       // Save keys with new master key
-      await saveKeysToUrl(keypair, newMasterKey);
+      await saveKeysToUrl(keypair, ephemeralSeed, newMasterKey);
       
       // Update the master key in state
       setMasterKey(newMasterKey);
@@ -296,6 +325,7 @@ export const useKeyManagement = () => {
   return {
     keypair,
     keypairDisplay,
+    ephemeralSeed,
     masterKey,
     setMasterKey,
     masterKeyLocked,
@@ -310,6 +340,7 @@ export const useKeyManagement = () => {
     isUnlocking,
     isSavingKeys,
     isLocking,
-    changeMasterKey
+    changeMasterKey,
+    formatPublicKeyBundle,
   };
 };

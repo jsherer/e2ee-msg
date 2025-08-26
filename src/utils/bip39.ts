@@ -2049,10 +2049,10 @@ export const BIP39_WORDLIST = [
 "zoo"
 ];
 
-// Convert a Uint8Array (32 bytes / 256 bits) to 24 BIP39 words
+// Convert a Uint8Array to BIP39 words (32 bytes = 24 words, 64 bytes = 48 words)
 export function uint8ArrayToWords(bytes: Uint8Array): string[] {
-  if (bytes.length !== 32) {
-    throw new Error('Expected 32 bytes for BIP39 encoding');
+  if (bytes.length !== 32 && bytes.length !== 64) {
+    throw new Error('Expected 32 or 64 bytes for BIP39 encoding');
   }
 
   // Convert bytes to binary string
@@ -2061,21 +2061,26 @@ export function uint8ArrayToWords(bytes: Uint8Array): string[] {
     binaryStr += bytes[i].toString(2).padStart(8, '0');
   }
 
-  // Calculate checksum (first 8 bits of SHA256 hash)
+  // Calculate checksum bits needed (1 bit per 32 bits of data)
+  const checksumBitLength = bytes.length / 4; // 8 bits for 32 bytes, 16 bits for 64 bytes
+  
+  // Calculate checksum (first N bits of hash)
   // For simplicity, we'll use a basic checksum approach
   // In production, you'd use proper SHA256
   let checksum = 0;
   for (let i = 0; i < bytes.length; i++) {
-    checksum = (checksum + bytes[i]) % 256;
+    checksum = (checksum + bytes[i]) % (1 << checksumBitLength);
   }
-  const checksumBits = checksum.toString(2).padStart(8, '0');
+  const checksumBits = checksum.toString(2).padStart(checksumBitLength, '0');
   
-  // Append checksum to create 264 bits (256 + 8)
+  // Append checksum to create total bits
   binaryStr += checksumBits;
 
-  // Split into 24 groups of 11 bits each
+  // Split into groups of 11 bits each (24 words for 32 bytes, 48 words for 64 bytes)
+  const totalBits = binaryStr.length;
+  const wordCount = totalBits / 11;
   const words: string[] = [];
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < wordCount; i++) {
     const index = parseInt(binaryStr.substr(i * 11, 11), 2);
     words.push(BIP39_WORDLIST[index]);
   }
@@ -2083,10 +2088,10 @@ export function uint8ArrayToWords(bytes: Uint8Array): string[] {
   return words;
 }
 
-// Convert 24 BIP39 words back to Uint8Array (32 bytes)
+// Convert BIP39 words back to Uint8Array (24 words = 32 bytes, 48 words = 64 bytes)
 export function wordsToUint8Array(words: string[]): Uint8Array {
-  if (words.length !== 24) {
-    throw new Error('Expected 24 words for BIP39 decoding');
+  if (words.length !== 24 && words.length !== 48) {
+    throw new Error('Expected 24 or 48 words for BIP39 decoding');
   }
 
   // Convert words to indices
@@ -2099,21 +2104,24 @@ export function wordsToUint8Array(words: string[]): Uint8Array {
     binaryStr += index.toString(2).padStart(11, '0');
   }
 
-  // Extract the 256 bits (ignore checksum)
-  const dataStr = binaryStr.substr(0, 256);
+  // Extract the data bits (ignore checksum)
+  const byteCount = words.length === 24 ? 32 : 64;
+  const dataBitCount = byteCount * 8;
+  const dataStr = binaryStr.substr(0, dataBitCount);
   
   // Convert binary string back to bytes
-  const bytes = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
+  const bytes = new Uint8Array(byteCount);
+  for (let i = 0; i < byteCount; i++) {
     bytes[i] = parseInt(dataStr.substr(i * 8, 8), 2);
   }
 
   // Verify checksum
+  const checksumBitLength = byteCount / 4;
   let checksum = 0;
   for (let i = 0; i < bytes.length; i++) {
-    checksum = (checksum + bytes[i]) % 256;
+    checksum = (checksum + bytes[i]) % (1 << checksumBitLength);
   }
-  const expectedChecksum = parseInt(binaryStr.substr(256, 8), 2);
+  const expectedChecksum = parseInt(binaryStr.substr(dataBitCount, checksumBitLength), 2);
   if (checksum !== expectedChecksum) {
     console.warn('BIP39 checksum mismatch');
   }

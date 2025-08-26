@@ -7,21 +7,19 @@ interface KeysDisplayProps {
   userId: string | null;
   encryptedPrivateKey: string | null;
   keypairDisplay: KeyPairDisplay | null;
-  publicKeyWords: string | null;
   displayFormat: DisplayFormat;
   setDisplayFormat: (format: DisplayFormat) => void;
   copied: boolean;
   onCopyPublicKey: () => void;
   isRegenerating: boolean;
   onRegenerate: () => void;
-  showPrivateKey: boolean;
+  showPrivateKey?: boolean;
 }
 
 export const KeysDisplay: React.FC<KeysDisplayProps> = ({
   userId,
   encryptedPrivateKey,
   keypairDisplay,
-  publicKeyWords,
   displayFormat,
   setDisplayFormat,
   copied,
@@ -31,9 +29,9 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
   showPrivateKey = false,
 }) => {
   const toggleFormat = () => {
-    const formats: DisplayFormat[] = ['base32', 'words', 'qr'];
+    const formats: DisplayFormat[] = ['base32', 'qr'];
     const currentIndex = formats.indexOf(displayFormat);
-    setDisplayFormat(formats[(currentIndex + 1) % 3]);
+    setDisplayFormat(formats[(currentIndex + 1) % 2]);
   };
 
   return (
@@ -111,7 +109,7 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
                 fontSize: '12px'
               }}
             >
-              {displayFormat === 'base32' ? 'Base32' : displayFormat === 'words' ? 'Words' : 'QR'}
+              {displayFormat === 'base32' ? 'Base32' : 'QR'}
             </button>
             <button
               onClick={onCopyPublicKey}
@@ -132,16 +130,7 @@ export const KeysDisplay: React.FC<KeysDisplayProps> = ({
             </button>
           </div>
         </div>
-        {displayFormat === 'words' && publicKeyWords ? (
-          <div style={{ 
-            fontSize: '12px', 
-            lineHeight: '1.6',
-            fontFamily: 'monospace',
-            textTransform: 'uppercase'
-          }}>
-            {publicKeyWords}
-          </div>
-        ) : displayFormat === 'qr' && keypairDisplay ? (
+        {displayFormat === 'qr' && keypairDisplay ? (
           <div style={{ 
             display: 'flex', 
             justifyContent: 'center', 

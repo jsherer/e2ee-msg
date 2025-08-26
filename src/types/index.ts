@@ -12,7 +12,7 @@ export interface KeyPairDisplay {
   secretKey: string;
 }
 
-export type DisplayFormat = 'base32' | 'words' | 'qr';
+export type DisplayFormat = 'base32' | 'qr';
 
 export interface CryptoState {
   keypair: KeyPair | null;

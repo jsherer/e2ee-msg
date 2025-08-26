@@ -42,6 +42,17 @@ export const useCrypto = (
     }
   }, []);
 
+  // Extract identity key from a bundle (first 32 bytes)
+  const extractIdentityKey = useCallback((keyOrBundle: Uint8Array): Uint8Array => {
+    if (keyOrBundle.length === 32) {
+      return keyOrBundle;
+    } else if (keyOrBundle.length === 64) {
+      return keyOrBundle.slice(0, 32);
+    } else {
+      throw new Error(`Invalid key size: ${keyOrBundle.length} bytes`);
+    }
+  }, []);
+
   const handleEncrypt = async () => {
     if (!keypair || !recipientPublicKey || !message) {
       setOutput('Error: Missing keypair, recipient public key, or message');
@@ -144,11 +155,12 @@ export const useCrypto = (
     if (!recipientPublicKey) return;
     try {
       const recipientKey = parsePublicKey(recipientPublicKey);
-      resetSession(recipientKey);
+      const identityKey = extractIdentityKey(recipientKey);
+      resetSession(identityKey);
     } catch (error) {
       console.error('Failed to reset ratchet:', error);
     }
-  }, [recipientPublicKey, resetSession, parsePublicKey]);
+  }, [recipientPublicKey, resetSession, parsePublicKey, extractIdentityKey]);
 
   return {
     recipientPublicKey,

@@ -9,7 +9,7 @@ import { RatchetVisualizer } from './components/RatchetVisualizer';
 import { useKeyManagement } from './hooks/useKeyManagement';
 import { useCrypto } from './hooks/useCrypto';
 import { useQRScanner } from './hooks/useQRScanner';
-import { uint8ArrayToWords, formatWords } from './utils/bip39';
+import { uint8ArrayToBase32Crockford, formatInGroups } from './utils/encoding';
 import { copyTextToClipboard, copyImageToClipboard } from './utils/clipboard';
 import { DisplayFormat } from './types';
 
@@ -31,7 +31,8 @@ const App: React.FC = () => {
     isUnlocking,
     isSavingKeys,
     isLocking,
-    changeMasterKey
+    changeMasterKey,
+    formatPublicKeyBundle,
   } = useKeyManagement();
 
   const {
@@ -68,16 +69,17 @@ const App: React.FC = () => {
   const [copiedOutput, setCopiedOutput] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  const publicKeyWords = useMemo(() => {
-    if (!keypair) return null;
-    try {
-      const words = uint8ArrayToWords(keypair.publicKey);
-      return formatWords(words, 4);
-    } catch (error) {
-      console.error('Failed to convert to words:', error);
-      return null;
-    }
-  }, [keypair]);
+  // Always use the full 64-byte bundle for display
+  const bundleForDisplay = useMemo(() => {
+    const bundle = formatPublicKeyBundle();
+    return bundle; // Only return valid bundles, not fallbacks
+  }, [formatPublicKeyBundle]);
+
+  const publicKeyDisplay = useMemo(() => {
+    if (!bundleForDisplay) return null;
+    // Format in groups with newlines after every 6 groups
+    return formatInGroups(uint8ArrayToBase32Crockford(bundleForDisplay), true);
+  }, [bundleForDisplay]);
 
   const handleRegenerate = async () => {
     if (window.confirm('Generate new keys?\n\nThis will replace your current keypair. You will lose access to messages encrypted with the old keys.\n\nContinue?')) {
@@ -90,18 +92,17 @@ const App: React.FC = () => {
   };
 
   const copyPublicKey = async () => {
-    if (displayFormat === 'qr' && keypairDisplay) {
+    const keyToCopy = publicKeyDisplay || keypairDisplay?.publicKey;
+    if (displayFormat === 'qr' && keyToCopy) {
       const svg = document.querySelector('#public-key-qr') as SVGElement;
       if (svg) {
         const success = await copyImageToClipboard(svg);
-        if (!success && keypairDisplay) {
-          await copyTextToClipboard(keypairDisplay.publicKey);
+        if (!success) {
+          await copyTextToClipboard(keyToCopy);
         }
       }
-    } else if (displayFormat === 'words' && publicKeyWords) {
-      await copyTextToClipboard(publicKeyWords.replace(/\n/g, ' '));
-    } else if (keypairDisplay) {
-      await copyTextToClipboard(keypairDisplay.publicKey);
+    } else if (keyToCopy) {
+      await copyTextToClipboard(keyToCopy);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -159,8 +160,10 @@ const App: React.FC = () => {
           <KeysDisplay
             userId={userId}
             encryptedPrivateKey={encryptedPrivateKey}
-            keypairDisplay={keypairDisplay}
-            publicKeyWords={publicKeyWords}
+            keypairDisplay={{ 
+              publicKey: publicKeyDisplay || keypairDisplay?.publicKey || '', 
+              secretKey: keypairDisplay?.secretKey || '' 
+            }}
             displayFormat={displayFormat}
             setDisplayFormat={setDisplayFormat}
             copied={copied}

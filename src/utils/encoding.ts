@@ -121,10 +121,10 @@ export const formatInGroups = (str: string, addNewlines: boolean = false): strin
     return groups.join(' ');
   }
   
-  // Add newlines every 5 groups (25 characters)
+  // Add newlines every 6 groups (30 characters)
   const lines: string[] = [];
-  for (let i = 0; i < groups.length; i += 5) {
-    lines.push(groups.slice(i, i + 5).join(' '));
+  for (let i = 0; i < groups.length; i += 6) {
+    lines.push(groups.slice(i, i + 6).join(' '));
   }
   return lines.join('\n');
 };
