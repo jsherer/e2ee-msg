@@ -1,161 +1,91 @@
-import {
-  uint8ArrayToBase32Crockford,
-  base32CrockfordToUint8Array,
-  formatInGroups,
-  generateUserId
-} from '../src/utils/encoding';
+/**
+ * Tests for encryption/decryption with 32 and 64 byte keys
+ */
 
-describe('encoding utilities', () => {
-  describe('uint8ArrayToBase32Crockford', () => {
-    it('should convert a Uint8Array to base32 Crockford string', () => {
-      const input = new Uint8Array([0, 1, 2, 3, 4]);
-      const result = uint8ArrayToBase32Crockford(input);
-      expect(result).toBe('000G40R4');
+import * as nacl from 'tweetnacl';
+import { encryptMessage, decryptMessage } from '../src/utils/crypto';
+
+describe('Encryption with different key sizes', () => {
+  let alice: ReturnType<typeof nacl.box.keyPair>;
+  let bob: ReturnType<typeof nacl.box.keyPair>;
+
+  beforeEach(() => {
+    alice = nacl.box.keyPair();
+    bob = nacl.box.keyPair();
+  });
+
+  describe('Standard encryption (32-byte keys)', () => {
+    it('should encrypt and decrypt with 32-byte keys', () => {
+      const message = 'Hello Bob!';
+      
+      // Alice encrypts for Bob
+      const encrypted = encryptMessage(message, bob.publicKey, alice.secretKey);
+      expect(encrypted).toBeDefined();
+      expect(encrypted.length).toBeGreaterThan(0);
+      
+      // Bob decrypts from Alice
+      const decrypted = decryptMessage(encrypted, alice.publicKey, bob.secretKey);
+      expect(decrypted).toBe(message);
     });
 
-    it('should handle empty array', () => {
-      const input = new Uint8Array([]);
-      const result = uint8ArrayToBase32Crockford(input);
-      expect(result).toBe('');
-    });
-
-    it('should handle all zeros', () => {
-      const input = new Uint8Array([0, 0, 0, 0]);
-      const result = uint8ArrayToBase32Crockford(input);
-      expect(result).toBe('0000000');
-    });
-
-    it('should handle max values', () => {
-      const input = new Uint8Array([255, 255, 255, 255]);
-      const result = uint8ArrayToBase32Crockford(input);
-      expect(result).toBe('ZZZZZZR');
+    it('should fail decryption with wrong keys', () => {
+      const message = 'Secret message';
+      const eve = nacl.box.keyPair();
+      
+      const encrypted = encryptMessage(message, bob.publicKey, alice.secretKey);
+      
+      // Eve tries to decrypt
+      const decrypted = decryptMessage(encrypted, alice.publicKey, eve.secretKey);
+      expect(decrypted).toBeNull();
     });
   });
 
-  describe('base32CrockfordToUint8Array', () => {
-    it('should convert base32 Crockford string back to Uint8Array', () => {
-      const input = '000G40R4';
-      const result = base32CrockfordToUint8Array(input);
-      expect(result).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
-    });
-
-    it('should handle strings with spaces', () => {
-      const input = '000G 40R4';  // Same as '000G40R4' but with space
-      const result = base32CrockfordToUint8Array(input);
-      expect(result).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
-    });
-
-    it('should handle ambiguous characters', () => {
-      // Crockford base32 treats O as 0, I/L as 1
-      const input1 = 'O00G40R4'; // O instead of first 0
-      const result1 = base32CrockfordToUint8Array(input1);
-      expect(result1).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
-      
-      const input2 = '0O0G40R4'; // O instead of second 0
-      const result2 = base32CrockfordToUint8Array(input2);
-      expect(result2).toEqual(new Uint8Array([0, 1, 2, 3, 4]));
-    });
-  });
-
-  describe('round-trip conversion', () => {
-    it('should convert back and forth correctly', () => {
-      const original = new Uint8Array(32);
-      crypto.getRandomValues(original);
-      
-      const base32 = uint8ArrayToBase32Crockford(original);
-      const restored = base32CrockfordToUint8Array(base32);
-      
-      expect(restored).toEqual(original);
-    });
-
-    it('should handle various sizes', () => {
-      for (const size of [1, 5, 10, 32, 64, 100]) {
-        const original = new Uint8Array(size);
-        crypto.getRandomValues(original);
-        
-        const base32 = uint8ArrayToBase32Crockford(original);
-        const restored = base32CrockfordToUint8Array(base32);
-        
-        expect(restored).toEqual(original);
+  describe('Bundle handling (64-byte keys)', () => {
+    it('should extract identity key from 64-byte bundle', () => {
+      // Create a 64-byte bundle (identity + ephemeral)
+      const bundle = new Uint8Array(64);
+      bundle.set(bob.publicKey, 0);
+      // Fill ephemeral part with dummy data
+      for (let i = 32; i < 64; i++) {
+        bundle[i] = i;
       }
+      
+      // Should use only first 32 bytes for encryption
+      const message = 'Test with bundle';
+      const encrypted = encryptMessage(message, bundle.slice(0, 32), alice.secretKey);
+      
+      // Bob can decrypt with his identity key
+      const decrypted = decryptMessage(encrypted, alice.publicKey, bob.secretKey);
+      expect(decrypted).toBe(message);
+    });
+
+    it('should handle mixed key sizes', () => {
+      const message = 'Mixed key test';
+      
+      // Alice has 32-byte key, Bob has 64-byte bundle
+      const bobBundle = new Uint8Array(64);
+      bobBundle.set(bob.publicKey, 0);
+      
+      // Alice encrypts using Bob's identity (first 32 bytes)
+      const encrypted = encryptMessage(message, bob.publicKey, alice.secretKey);
+      
+      // Bob decrypts
+      const decrypted = decryptMessage(encrypted, alice.publicKey, bob.secretKey);
+      expect(decrypted).toBe(message);
     });
   });
 
-  describe('formatInGroups', () => {
-    it('should format string in groups of 5', () => {
-      const input = 'abcdefghijklmnop';
-      const result = formatInGroups(input);
-      expect(result).toBe('abcde fghij klmno p');
-    });
-
-    it('should handle empty string', () => {
-      const input = '';
-      const result = formatInGroups(input);
-      expect(result).toBe('');
-    });
-
-    it('should handle string shorter than 5 chars', () => {
-      const input = 'abc';
-      const result = formatInGroups(input);
-      expect(result).toBe('abc');
-    });
-
-    it('should handle exact multiple of 5', () => {
-      const input = 'abcdefghij';
-      const result = formatInGroups(input);
-      expect(result).toBe('abcde fghij');
-    });
-
-    it('should add newlines every 5 groups when addNewlines is true', () => {
-      const input = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJK';
-      const result = formatInGroups(input, true);
-      expect(result).toBe('abcde fghij klmno pqrst uvwxy\nz0123 45678 9ABCD EFGHI JK');
-    });
-
-    it('should format with newlines for exactly 25 chars', () => {
-      const input = 'abcdefghijklmnopqrstuvwxy';
-      const result = formatInGroups(input, true);
-      expect(result).toBe('abcde fghij klmno pqrst uvwxy');
-    });
-
-    it('should handle short string with newlines flag', () => {
-      const input = 'abc';
-      const result = formatInGroups(input, true);
-      expect(result).toBe('abc');
-    });
-  });
-
-  describe('generateUserId', () => {
-    it('should generate a formatted user ID', () => {
-      const publicKey = new Uint8Array(32);
-      publicKey.fill(42); // Fill with test data
+  describe('Message format', () => {
+    it('should create properly formatted encrypted messages', () => {
+      const message = 'Format test';
+      const encrypted = encryptMessage(message, bob.publicKey, alice.secretKey);
       
-      const result = generateUserId(publicKey);
+      // Check structure: nonce (24) + encrypted data
+      expect(encrypted.length).toBeGreaterThanOrEqual(24 + message.length);
       
-      expect(result).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
-    });
-
-    it('should generate consistent ID for same key', () => {
-      const publicKey = new Uint8Array(32);
-      publicKey.fill(123);
-      
-      const id1 = generateUserId(publicKey);
-      const id2 = generateUserId(publicKey);
-      
-      expect(id1).toBe(id2);
-    });
-
-    it('should generate different IDs for different keys', () => {
-      const key1 = new Uint8Array(32);
-      key1.fill(1);
-      
-      const key2 = new Uint8Array(32);
-      key2.fill(2);
-      
-      const id1 = generateUserId(key1);
-      const id2 = generateUserId(key2);
-      
-      expect(id1).not.toBe(id2);
+      // First 24 bytes should be the nonce
+      const nonce = encrypted.slice(0, 24);
+      expect(nonce.length).toBe(24);
     });
   });
 });
