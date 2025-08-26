@@ -103,7 +103,7 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
             type="text"
             value={recipientPublicKey}
             onChange={(e) => setRecipientPublicKey(e.target.value)}
-            placeholder="Enter public key (base32 or 24 words)..."
+            placeholder="Enter recipient's public key..."
             style={{
               flex: 1,
               padding: '10px',
