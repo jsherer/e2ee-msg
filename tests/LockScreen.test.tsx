@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LockScreen } from '../src/components/LockScreen';
@@ -62,21 +62,67 @@ describe('LockScreen', () => {
     expect(unlockButton).toBeDisabled();
   });
 
-  it('should enable unlock button when key is long enough', () => {
-    render(<LockScreen {...mockProps} masterKey="this-is-long-enough" />);
+  it('should enable unlock button when key is long enough', async () => {
+    const user = userEvent.setup();
+    
+    // Create a wrapper component that manages state
+    const TestWrapper = () => {
+      const [masterKey, setMasterKey] = useState('');
+      return (
+        <LockScreen 
+          {...mockProps} 
+          masterKey={masterKey}
+          setMasterKey={setMasterKey}
+        />
+      );
+    };
+    
+    render(<TestWrapper />);
+    
+    // Type in the master key field
+    const masterKeyInput = screen.getByPlaceholderText('Choose a strong master key');
+    await user.type(masterKeyInput, 'this-is-long-enough');
+    
+    // Confirmation field should appear after typing enough characters
+    const confirmInput = screen.getByPlaceholderText('Confirm your master key');
+    await user.type(confirmInput, 'this-is-long-enough');
     
     const unlockButton = screen.getByText('Start Secure Session');
     expect(unlockButton).not.toBeDisabled();
   });
 
   it('should call onUnlock when unlock button is clicked', async () => {
-    render(<LockScreen {...mockProps} masterKey="valid-master-key-12345" />);
+    const user = userEvent.setup();
+    const onUnlockMock = jest.fn().mockResolvedValue(true);
+    
+    // Create a wrapper component that manages state
+    const TestWrapper = () => {
+      const [masterKey, setMasterKey] = useState('');
+      return (
+        <LockScreen 
+          {...mockProps}
+          masterKey={masterKey}
+          setMasterKey={setMasterKey}
+          onUnlock={onUnlockMock}
+        />
+      );
+    };
+    
+    render(<TestWrapper />);
+    
+    // Type in the master key field
+    const masterKeyInput = screen.getByPlaceholderText('Choose a strong master key');
+    await user.type(masterKeyInput, 'valid-master-key-12345');
+    
+    // Type in the confirmation field
+    const confirmInput = screen.getByPlaceholderText('Confirm your master key');
+    await user.type(confirmInput, 'valid-master-key-12345');
     
     const unlockButton = screen.getByText('Start Secure Session');
     fireEvent.click(unlockButton);
     
     await waitFor(() => {
-      expect(mockProps.onUnlock).toHaveBeenCalledTimes(1);
+      expect(onUnlockMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -93,13 +139,37 @@ describe('LockScreen', () => {
   });
 
   it('should call onUnlock when Enter key is pressed', async () => {
-    render(<LockScreen {...mockProps} masterKey="valid-master-key-12345" />);
+    const user = userEvent.setup();
+    const onUnlockMock = jest.fn().mockResolvedValue(true);
     
-    const input = screen.getByPlaceholderText('Choose a strong master key');
-    fireEvent.keyPress(input, { key: 'Enter', code: 'Enter', charCode: 13 });
+    // Create a wrapper component that manages state
+    const TestWrapper = () => {
+      const [masterKey, setMasterKey] = useState('');
+      return (
+        <LockScreen 
+          {...mockProps}
+          masterKey={masterKey}
+          setMasterKey={setMasterKey}
+          onUnlock={onUnlockMock}
+        />
+      );
+    };
+    
+    render(<TestWrapper />);
+    
+    // Type in the master key field
+    const masterKeyInput = screen.getByPlaceholderText('Choose a strong master key');
+    await user.type(masterKeyInput, 'valid-master-key-12345');
+    
+    // Type in the confirmation field
+    const confirmInput = screen.getByPlaceholderText('Confirm your master key');
+    await user.type(confirmInput, 'valid-master-key-12345');
+    
+    // Press Enter in the confirmation field
+    fireEvent.keyPress(confirmInput, { key: 'Enter', code: 'Enter', charCode: 13 });
     
     await waitFor(() => {
-      expect(mockProps.onUnlock).toHaveBeenCalledTimes(1);
+      expect(onUnlockMock).toHaveBeenCalledTimes(1);
     });
   });
 
