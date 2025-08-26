@@ -178,52 +178,67 @@ const App: React.FC = () => {
           boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
           display: 'flex',
           justifyContent: 'space-between',
+          gap: 16,
           alignItems: 'center'
         }}>
-          <button
-            onClick={lockApp}
-            disabled={isLocking}
-            title="Lock the app"
-            style={{
-              background: isLocking ? '#FFA500' : 'white',
-              border: '1px solid #e0e0e0',
-              borderRadius: '6px',
-              padding: '6px 12px',
-              cursor: isLocking ? 'not-allowed' : 'pointer',
-              fontSize: '13px',
-              color: isLocking ? 'white' : '#666',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.2s'
-            }}
-            onMouseOver={(e) => !isLocking && (e.currentTarget.style.borderColor = '#f44336')}
-            onMouseOut={(e) => !isLocking && (e.currentTarget.style.borderColor = '#e0e0e0')}
-          >
-            🔒 {isLocking ? 'Locking...' : 'Lock'}
-          </button>
-          
-          <button
-            onClick={handleDestroy}
-            title="Destroy all sessions and reset"
-            style={{
-              background: 'white',
-              border: '1px solid #e0e0e0',
-              borderRadius: '6px',
-              padding: '6px 12px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              color: '#666',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.2s'
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.borderColor = '#ff9800')}
-            onMouseOut={(e) => (e.currentTarget.style.borderColor = '#e0e0e0')}
-          >
-            💣 Destroy
-          </button>
+          <h3 style={{ 
+            margin: 0,
+            fontSize: '18px',
+            color: '#333'
+          }}>
+            E2EE Messenger
+          </h3>
+          <div style={{
+            display: 'flex',
+            gap: 16,
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <button
+              onClick={lockApp}
+              disabled={isLocking}
+              title="Lock the app"
+              style={{
+                background: isLocking ? '#FFA500' : 'white',
+                border: '1px solid #e0e0e0',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                cursor: isLocking ? 'not-allowed' : 'pointer',
+                fontSize: '13px',
+                color: isLocking ? 'white' : '#666',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => !isLocking && (e.currentTarget.style.borderColor = '#f44336')}
+              onMouseOut={(e) => !isLocking && (e.currentTarget.style.borderColor = '#e0e0e0')}
+            >
+              🔒 {isLocking ? 'Locking...' : 'Lock'}
+            </button>
+            
+            <button
+              onClick={handleDestroy}
+              title="Destroy all sessions and reset"
+              style={{
+                background: 'white',
+                border: '1px solid #e0e0e0',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                color: '#666',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.borderColor = '#ff9800')}
+              onMouseOut={(e) => (e.currentTarget.style.borderColor = '#e0e0e0')}
+            >
+              💣 Destroy...
+            </button>
+          </div>
         </div>
 
         <MasterKeyCard 
