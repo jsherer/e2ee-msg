@@ -140,3 +140,92 @@ export const generateUserId = (publicKey: Uint8Array): string => {
     .toUpperCase();
   return hexId.match(/.{1,4}/g)?.join('-') || hexId;
 };
+
+/**
+ * Encode PRP-Cap public key with epoch parameters
+ * Format: [version(1)][publicKey(32)][A(32)][B(32)][metadata(variable)]
+ */
+export const encodePRPCapPublicKey = (
+  publicKey: Uint8Array,
+  epochA: Uint8Array,
+  epochB: Uint8Array,
+  validFrom: number,
+  validUntil: number,
+  epochId: string
+): string => {
+  // Create metadata
+  const metadata = {
+    validFrom,
+    validUntil,
+    epochId
+  };
+  const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
+  
+  // Combine all parts
+  const totalLength = 1 + 32 + 32 + 32 + metadataBytes.length;
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  
+  // Version byte
+  combined[offset++] = 0x01; // Version 1
+  
+  // Public key
+  combined.set(publicKey, offset);
+  offset += 32;
+  
+  // Epoch A
+  combined.set(epochA, offset);
+  offset += 32;
+  
+  // Epoch B
+  combined.set(epochB, offset);
+  offset += 32;
+  
+  // Metadata
+  combined.set(metadataBytes, offset);
+  
+  // Encode as base32
+  return uint8ArrayToBase32(combined);
+};
+
+/**
+ * Decode PRP-Cap public key with epoch parameters
+ */
+export const decodePRPCapPublicKey = (encoded: string): {
+  publicKey: Uint8Array;
+  epochA: Uint8Array;
+  epochB: Uint8Array;
+  validFrom: number;
+  validUntil: number;
+  epochId: string;
+} | null => {
+  try {
+    const combined = base32ToUint8Array(encoded);
+    
+    // Check version
+    if (combined[0] !== 0x01) {
+      return null; // Unknown version
+    }
+    
+    // Extract parts
+    const publicKey = combined.slice(1, 33);
+    const epochA = combined.slice(33, 65);
+    const epochB = combined.slice(65, 97);
+    const metadataBytes = combined.slice(97);
+    
+    // Parse metadata
+    const metadataStr = new TextDecoder().decode(metadataBytes);
+    const metadata = JSON.parse(metadataStr);
+    
+    return {
+      publicKey,
+      epochA,
+      epochB,
+      validFrom: metadata.validFrom,
+      validUntil: metadata.validUntil,
+      epochId: metadata.epochId
+    };
+  } catch (error) {
+    return null;
+  }
+};

@@ -3,6 +3,8 @@
  */
 
 import * as nacl from 'tweetnacl';
+import { PRPCapKeyPair } from '../types';
+import { generatePRPCapEpoch, initializeEd25519 } from './prpcap';
 
 export interface KeyPair {
   publicKey: Uint8Array;
@@ -11,6 +13,37 @@ export interface KeyPair {
 
 export const generateKeyPair = (): KeyPair => {
   return nacl.box.keyPair();
+};
+
+/**
+ * Generate a PRP-Cap enabled keypair with epoch parameters
+ * This allows 0-RTT encryption for the first message
+ */
+export const generatePRPCapKeyPair = async (): Promise<PRPCapKeyPair> => {
+  // Generate standard X25519 keypair
+  const keypair = nacl.box.keyPair();
+  
+  // Initialize Ed25519 for PRP-Cap
+  await initializeEd25519();
+  
+  // Generate PRP-Cap epoch parameters
+  const epoch = await generatePRPCapEpoch();
+  
+  return {
+    publicKey: keypair.publicKey,
+    secretKey: keypair.secretKey,
+    epoch: {
+      A: epoch.A,
+      B: epoch.B,
+      s1: epoch.s1,
+      s2: epoch.s2,
+      validFrom: Date.now(),
+      validUntil: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days
+      epochId: Array.from(nacl.hash(new Uint8Array([...epoch.A, ...epoch.B])).slice(0, 16))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
+    }
+  };
 };
 
 export const generateKeyPairFromSecretKey = (secretKey: Uint8Array): KeyPair => {

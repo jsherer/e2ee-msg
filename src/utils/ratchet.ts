@@ -116,6 +116,58 @@ export function initializeRatchet(
 }
 
 /**
+ * Initialize a ratchet session from PRP-Cap shared secret
+ * This is used when the first message was sent via PRP-Cap 0-RTT
+ */
+export function initializeRatchetFromPRPCapSecret(
+  myIdentityKeyPair: KeyPair,
+  theirIdentityPublicKey: Uint8Array,
+  theirEphemeralPublicKey: Uint8Array,
+  prpcapSharedSecret: Uint8Array
+): RatchetState {
+  // Generate our ephemeral key for ratchet
+  const ephemeralKeyPair = nacl.box.keyPair();
+  
+  // Compute additional DH for enhanced security
+  const dh1 = dh(myIdentityKeyPair.secretKey, theirEphemeralPublicKey);
+  const dh2 = dh(ephemeralKeyPair.secretKey, theirEphemeralPublicKey);
+  
+  // Combine PRP-Cap shared secret with DH outputs
+  const combined = new Uint8Array(prpcapSharedSecret.length + dh1.length + dh2.length);
+  combined.set(prpcapSharedSecret, 0);
+  combined.set(dh1, prpcapSharedSecret.length);
+  combined.set(dh2, prpcapSharedSecret.length + dh1.length);
+  
+  // Derive root key and chain keys
+  const hashedSecret = nacl.hash(combined);
+  const rootKey = hashedSecret.slice(0, 32);
+  const initialChainKey = hashedSecret.slice(32, 64);
+  
+  // Clear sensitive data
+  prpcapSharedSecret.fill(0);
+  dh1.fill(0);
+  dh2.fill(0);
+  combined.fill(0);
+  
+  return {
+    myIdentityKeyPair,
+    theirIdentityPublicKey,
+    myCurrentEphemeralKeyPair: ephemeralKeyPair,
+    theirLatestEphemeralPublicKey: theirEphemeralPublicKey,
+    hasRatchetedForTheirEphemeral: false,
+    rootKey,
+    sendingChainKey: new Uint8Array(initialChainKey),
+    receivingChainKey: new Uint8Array(initialChainKey),
+    sendMessageCounter: 0,
+    receiveMessageCounter: 0,
+    previousSendCounter: 0,
+    skippedMessageKeys: new Map(),
+    previousReceivingChains: new Map(),
+    isInitialized: true
+  };
+}
+
+/**
  * Skip message keys for out-of-order messages
  */
 function skipMessageKeys(

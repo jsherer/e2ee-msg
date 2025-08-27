@@ -12,6 +12,21 @@ export interface KeyPairDisplay {
   secretKey: string;
 }
 
+/**
+ * PRP-Cap enabled keypair with epoch parameters
+ */
+export interface PRPCapKeyPair extends KeyPair {
+  epoch?: {
+    A: Uint8Array;           // Public point A (32 bytes)
+    B: Uint8Array;           // Public point B (32 bytes)
+    s1?: Uint8Array;         // Secret scalar 1 (only for own keys)
+    s2?: Uint8Array;         // Secret scalar 2 (only for own keys)
+    validFrom: number;       // Unix timestamp
+    validUntil: number;      // Unix timestamp
+    epochId: string;         // Hex string identifier
+  };
+}
+
 export interface ExtendedKeyPair {
   identity: KeyPair;
   ephemeralSeed: KeyPair;
