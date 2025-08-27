@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage"
   },
   "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "^7.27.1",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",

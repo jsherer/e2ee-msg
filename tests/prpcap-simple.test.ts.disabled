@@ -1,0 +1,337 @@
+/**
+ * Tests for simplified PRP-Cap implementation
+ */
+
+import * as nacl from 'tweetnacl';
+import {
+  generateSimpleEpoch,
+  deriveOTPKeypair,
+  computeSharedBasePoint,
+  createSimpleInitial,
+  processSimpleInitial,
+  testConvergence
+} from '../src/utils/prpcap-simple';
+
+describe('Simplified PRP-Cap Protocol', () => {
+  describe('Epoch generation', () => {
+    it('should generate valid epoch parameters', () => {
+      const epoch = generateSimpleEpoch();
+      
+      expect(epoch.masterSeed).toHaveLength(32);
+      expect(epoch.publicCommitment).toHaveLength(32);
+      expect(epoch.validFrom).toBeLessThanOrEqual(Date.now());
+      expect(epoch.validUntil).toBeGreaterThan(epoch.validFrom);
+      expect(epoch.epochId).toHaveLength(32);
+    });
+    
+    it('should generate different epochs each time', () => {
+      const epoch1 = generateSimpleEpoch();
+      const epoch2 = generateSimpleEpoch();
+      
+      expect(epoch1.masterSeed).not.toEqual(epoch2.masterSeed);
+      expect(epoch1.publicCommitment).not.toEqual(epoch2.publicCommitment);
+      expect(epoch1.epochId).not.toBe(epoch2.epochId);
+    });
+  });
+
+  describe('Key derivation', () => {
+    it('should derive different OTP keys for different indices', async () => {
+      const epoch = generateSimpleEpoch();
+      const senderIdentity = nacl.randomBytes(32);
+      
+      const otp1 = await deriveOTPKeypair(epoch.masterSeed, senderIdentity, 1);
+      const otp2 = await deriveOTPKeypair(epoch.masterSeed, senderIdentity, 2);
+      
+      expect(otp1.publicKey).not.toEqual(otp2.publicKey);
+      expect(otp1.secretKey).not.toEqual(otp2.secretKey);
+    });
+    
+    it('should derive different OTP keys for different senders', async () => {
+      const epoch = generateSimpleEpoch();
+      const sender1 = nacl.randomBytes(32);
+      const sender2 = nacl.randomBytes(32);
+      
+      const otp1 = await deriveOTPKeypair(epoch.masterSeed, sender1, 1);
+      const otp2 = await deriveOTPKeypair(epoch.masterSeed, sender2, 1);
+      
+      expect(otp1.publicKey).not.toEqual(otp2.publicKey);
+      expect(otp1.secretKey).not.toEqual(otp2.secretKey);
+    });
+  });
+
+  describe('Message encryption and decryption', () => {
+    it('should successfully encrypt and decrypt a message', async () => {
+      // Setup
+      const aliceIdentity = nacl.randomBytes(32);
+      const aliceSecret = nacl.randomBytes(32);
+      const bobIdentity = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      
+      const plaintext = new TextEncoder().encode('Secret message for Bob');
+      const index = 123;
+      
+      // Alice creates message
+      const message = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        aliceSecret,
+        bobEpoch.publicCommitment,
+        index
+      );
+      
+      expect(message.version).toBe(1);
+      expect(message.senderIdentity).toEqual(aliceIdentity);
+      expect(message.ephemeralPublic).toHaveLength(32);
+      expect(message.index).toBe(index);
+      expect(message.ciphertext.length).toBeGreaterThan(0);
+      expect(message.nonce).toHaveLength(24);
+      
+      // Bob decrypts message
+      const decrypted = await processSimpleInitial(
+        message,
+        bobEpoch.masterSeed,
+        bobIdentity,
+        bobEpoch.publicCommitment
+      );
+      
+      expect(decrypted).not.toBeNull();
+      expect(decrypted).toEqual(plaintext);
+      
+      const decryptedText = new TextDecoder().decode(decrypted!);
+      expect(decryptedText).toBe('Secret message for Bob');
+    });
+    
+    it('should fail to decrypt with wrong master seed', async () => {
+      const aliceIdentity = nacl.randomBytes(32);
+      const aliceSecret = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      
+      const plaintext = new TextEncoder().encode('Secret message');
+      
+      const message = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        aliceSecret,
+        bobEpoch.publicCommitment,
+        42
+      );
+      
+      // Try to decrypt with wrong master seed
+      const wrongSeed = nacl.randomBytes(32);
+      const decrypted = await processSimpleInitial(
+        message,
+        wrongSeed, // Wrong seed!
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment
+      );
+      
+      expect(decrypted).toBeNull();
+    });
+    
+    it('should fail to decrypt with wrong index', async () => {
+      const aliceIdentity = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      
+      const plaintext = new TextEncoder().encode('Test');
+      
+      const message = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment,
+        100
+      );
+      
+      // Tamper with index
+      message.index = 200;
+      
+      const decrypted = await processSimpleInitial(
+        message,
+        bobEpoch.masterSeed,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment
+      );
+      
+      expect(decrypted).toBeNull();
+    });
+  });
+
+  describe('0-RTT property', () => {
+    it('should allow encryption without round trips', async () => {
+      // This test verifies that Alice can encrypt for Bob
+      // using only Bob's public commitment (no interaction needed)
+      
+      const aliceIdentity = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      
+      // Alice only needs Bob's public commitment
+      const bobPublicInfo = {
+        commitment: bobEpoch.publicCommitment,
+        validFrom: bobEpoch.validFrom,
+        validUntil: bobEpoch.validUntil
+      };
+      
+      // Alice can immediately encrypt
+      const plaintext = new TextEncoder().encode('0-RTT message');
+      const message = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        nacl.randomBytes(32),
+        bobPublicInfo.commitment,
+        999
+      );
+      
+      // Verify message was created
+      expect(message).toBeDefined();
+      expect(message.ciphertext.length).toBeGreaterThan(0);
+      
+      // Bob can decrypt it later
+      const decrypted = await processSimpleInitial(
+        message,
+        bobEpoch.masterSeed,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment
+      );
+      
+      expect(decrypted).not.toBeNull();
+      expect(new TextDecoder().decode(decrypted!)).toBe('0-RTT message');
+    });
+  });
+
+  describe('Forward secrecy', () => {
+    it('should not decrypt old messages after master seed deletion', async () => {
+      const aliceIdentity = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      
+      // Create message
+      const plaintext = new TextEncoder().encode('Forward secure message');
+      const message = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment,
+        42
+      );
+      
+      // Bob can decrypt initially
+      const decrypted1 = await processSimpleInitial(
+        message,
+        bobEpoch.masterSeed,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment
+      );
+      expect(decrypted1).not.toBeNull();
+      
+      // "Delete" master seed (overwrite with zeros)
+      bobEpoch.masterSeed.fill(0);
+      
+      // Now Bob cannot decrypt
+      const decrypted2 = await processSimpleInitial(
+        message,
+        bobEpoch.masterSeed, // Now all zeros
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment
+      );
+      expect(decrypted2).toBeNull();
+    });
+  });
+
+  describe('Convergence test', () => {
+    it('should achieve key convergence', async () => {
+      // This uses the built-in test helper
+      const converged = await testConvergence();
+      expect(converged).toBe(true);
+    });
+    
+    it('should work for multiple indices', async () => {
+      const aliceIdentity = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      
+      const indices = [0, 1, 42, 999, 2147483647];
+      const plaintexts = [
+        'Message 0',
+        'Message 1', 
+        'Message 42',
+        'Message 999',
+        'Message MAX'
+      ];
+      
+      for (let i = 0; i < indices.length; i++) {
+        const plaintext = new TextEncoder().encode(plaintexts[i]);
+        
+        const message = await createSimpleInitial(
+          plaintext,
+          aliceIdentity,
+          nacl.randomBytes(32),
+          bobEpoch.publicCommitment,
+          indices[i]
+        );
+        
+        const decrypted = await processSimpleInitial(
+          message,
+          bobEpoch.masterSeed,
+          nacl.randomBytes(32),
+          bobEpoch.publicCommitment
+        );
+        
+        expect(decrypted).not.toBeNull();
+        expect(new TextDecoder().decode(decrypted!)).toBe(plaintexts[i]);
+      }
+    });
+  });
+
+  describe('Security properties', () => {
+    it('should use different ephemeral keys for each message', async () => {
+      const aliceIdentity = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      const plaintext = new TextEncoder().encode('Test');
+      
+      const msg1 = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment,
+        1
+      );
+      
+      const msg2 = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment,
+        2
+      );
+      
+      expect(msg1.ephemeralPublic).not.toEqual(msg2.ephemeralPublic);
+      expect(msg1.ciphertext).not.toEqual(msg2.ciphertext);
+      expect(msg1.nonce).not.toEqual(msg2.nonce);
+    });
+    
+    it('should produce different ciphertexts for same plaintext', async () => {
+      const aliceIdentity = nacl.randomBytes(32);
+      const bobEpoch = generateSimpleEpoch();
+      const plaintext = new TextEncoder().encode('Same message');
+      const index = 100;
+      
+      const msg1 = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment,
+        index
+      );
+      
+      const msg2 = await createSimpleInitial(
+        plaintext,
+        aliceIdentity,
+        nacl.randomBytes(32),
+        bobEpoch.publicCommitment,
+        index // Same index
+      );
+      
+      // Different ephemeral keys and nonces ensure different ciphertexts
+      expect(msg1.ciphertext).not.toEqual(msg2.ciphertext);
+      expect(msg1.ephemeralPublic).not.toEqual(msg2.ephemeralPublic);
+    });
+  });
+});

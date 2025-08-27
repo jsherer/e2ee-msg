@@ -1,0 +1,367 @@
+/**
+ * Unit tests for PRP-Cap protocol core functionality
+ */
+
+import * as nacl from 'tweetnacl';
+
+// Use nacl.hash for SHA-512
+const sha512 = (data: Uint8Array): Uint8Array => nacl.hash(data);
+import {
+  generateEpochParams,
+  computePRPCap,
+  computePrivateScalarForVi,
+  createInitialMessage,
+  processInitialMessage,
+  mergeLadders,
+  deleteEpochS2,
+  isEpochValid,
+  detectSimultaneousInitiation
+} from '../src/utils/prpcap';
+import {
+  generateScalar,
+  scalarMultBase,
+  ed25519DH,
+  bytesToNumberLE
+} from '../src/utils/ed25519-ops';
+import { PRPCapIdentity } from '../src/types/prpcap';
+
+describe('PRP-Cap Protocol Core', () => {
+  describe('Epoch parameter generation', () => {
+    it('should generate valid epoch parameters', () => {
+      const epoch = generateEpochParams();
+      
+      expect(epoch.A).toHaveLength(32);
+      expect(epoch.B).toHaveLength(32);
+      expect(epoch.s1).toHaveLength(32);
+      expect(epoch.s2).toHaveLength(32);
+      expect(epoch.validFrom).toBeLessThanOrEqual(Date.now());
+      expect(epoch.validUntil).toBeGreaterThan(epoch.validFrom);
+      expect(epoch.epochId).toHaveLength(32); // 16 bytes as hex string
+    });
+    
+    it('should generate different parameters each time', () => {
+      const epoch1 = generateEpochParams();
+      const epoch2 = generateEpochParams();
+      
+      expect(epoch1.A).not.toEqual(epoch2.A);
+      expect(epoch1.B).not.toEqual(epoch2.B);
+      expect(epoch1.s1).not.toEqual(epoch2.s1);
+      expect(epoch1.s2).not.toEqual(epoch2.s2);
+      expect(epoch1.epochId).not.toBe(epoch2.epochId);
+    });
+  });
+
+  describe('Key convergence - THE CRITICAL TEST', () => {
+    it('should achieve key convergence: DH(e, V_i) = DH(v_i, E)', () => {
+      // Setup: Bob generates epoch parameters
+      const bobEpoch = generateEpochParams();
+      
+      // Alice generates ephemeral
+      const aliceEphemeral = generateScalar();
+      const alicePublic = scalarMultBase(aliceEphemeral);
+      
+      // Choose an index
+      const index = 42;
+      
+      // Alice computes V_42
+      const V_42 = computePRPCap(bobEpoch.A, bobEpoch.B, index);
+      
+      // Bob computes v_42
+      const v_42 = computePrivateScalarForVi(
+        bobEpoch.s1,
+        bobEpoch.s2,
+        bobEpoch.A,
+        bobEpoch.B,
+        index
+      );
+      
+      // Alice computes: DH(e_alice, V_42)
+      const aliceSharedPoint = ed25519DH(aliceEphemeral, V_42);
+      const aliceShared = sha512(aliceSharedPoint).slice(0, 32);
+      
+      // Bob computes: DH(v_42, E_alice)
+      const bobSharedPoint = ed25519DH(v_42, alicePublic);
+      const bobShared = sha512(bobSharedPoint).slice(0, 32);
+      
+      // THE KEY ASSERTION
+      expect(aliceShared).toEqual(bobShared);
+    });
+    
+    it('should converge for multiple different indices', () => {
+      const bobEpoch = generateEpochParams();
+      const aliceEphemeral = generateScalar();
+      const alicePublic = scalarMultBase(aliceEphemeral);
+      
+      const indices = [0, 1, 42, 100, 999999, 2147483647]; // Include max 32-bit
+      
+      for (const index of indices) {
+        // Alice's side
+        const V_i = computePRPCap(bobEpoch.A, bobEpoch.B, index);
+        const aliceSharedPoint = ed25519DH(aliceEphemeral, V_i);
+        const aliceShared = sha512(aliceSharedPoint).slice(0, 32);
+        
+        // Bob's side
+        const v_i = computePrivateScalarForVi(
+          bobEpoch.s1,
+          bobEpoch.s2,
+          bobEpoch.A,
+          bobEpoch.B,
+          index
+        );
+        const bobSharedPoint = ed25519DH(v_i, alicePublic);
+        const bobShared = sha512(bobSharedPoint).slice(0, 32);
+        
+        expect(aliceShared).toEqual(bobShared);
+      }
+    });
+    
+    it('should produce different V_i for different indices', () => {
+      const epoch = generateEpochParams();
+      
+      const V_1 = computePRPCap(epoch.A, epoch.B, 1);
+      const V_2 = computePRPCap(epoch.A, epoch.B, 2);
+      const V_100 = computePRPCap(epoch.A, epoch.B, 100);
+      
+      expect(V_1).not.toEqual(V_2);
+      expect(V_1).not.toEqual(V_100);
+      expect(V_2).not.toEqual(V_100);
+    });
+  });
+
+  describe('Message creation and processing', () => {
+    let aliceIdentity: PRPCapIdentity;
+    let bobIdentity: PRPCapIdentity;
+    
+    beforeEach(() => {
+      // Setup Alice's identity
+      const aliceKeys = nacl.sign.keyPair();
+      aliceIdentity = {
+        identityPublicKey: aliceKeys.publicKey.slice(0, 32),
+        identitySecretKey: aliceKeys.secretKey,
+        verificationKey: aliceKeys.publicKey,
+        currentEpoch: generateEpochParams()
+      };
+      
+      // Setup Bob's identity
+      const bobKeys = nacl.sign.keyPair();
+      bobIdentity = {
+        identityPublicKey: bobKeys.publicKey.slice(0, 32),
+        identitySecretKey: bobKeys.secretKey,
+        verificationKey: bobKeys.publicKey,
+        currentEpoch: generateEpochParams()
+      };
+    });
+    
+    it('should create and process a valid initial message', async () => {
+      const plaintext = new TextEncoder().encode('Hello, Bob!');
+      
+      // Alice creates message for Bob
+      const message = await createInitialMessage({
+        recipientIdentity: bobIdentity,
+        plaintext,
+        myIdentity: aliceIdentity
+      });
+      
+      expect(message.version).toBe(1);
+      expect(message.messageId).toHaveLength(16);
+      expect(message.ephemeralPublicKey).toHaveLength(32);
+      expect(message.capabilityPoint).toHaveLength(32);
+      expect(message.signature).toHaveLength(64);
+      
+      // Bob processes message from Alice
+      const result = await processInitialMessage(
+        message,
+        bobIdentity,
+        aliceIdentity
+      );
+      
+      expect(result.success).toBe(true);
+      expect(result.plaintext).toEqual(plaintext);
+      expect(result.session).toBeDefined();
+      expect(result.session?.state).toBe('SINGLE_LADDER');
+    });
+    
+    it('should fail to process message with invalid signature', async () => {
+      const plaintext = new TextEncoder().encode('Hello, Bob!');
+      
+      const message = await createInitialMessage({
+        recipientIdentity: bobIdentity,
+        plaintext,
+        myIdentity: aliceIdentity
+      });
+      
+      // Corrupt the signature
+      message.signature[0] ^= 0xFF;
+      
+      const result = await processInitialMessage(
+        message,
+        bobIdentity,
+        aliceIdentity
+      );
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid signature');
+    });
+    
+    it('should fail to decrypt with wrong epoch parameters', async () => {
+      const plaintext = new TextEncoder().encode('Secret message');
+      
+      const message = await createInitialMessage({
+        recipientIdentity: bobIdentity,
+        plaintext,
+        myIdentity: aliceIdentity
+      });
+      
+      // Create a different Bob identity with different epoch
+      const wrongBob: PRPCapIdentity = {
+        ...bobIdentity,
+        currentEpoch: generateEpochParams() // Different epoch!
+      };
+      
+      const result = await processInitialMessage(
+        message,
+        wrongBob,
+        aliceIdentity
+      );
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Decryption failed');
+    });
+  });
+
+  describe('Double ladder operations', () => {
+    it('should merge ladders deterministically', () => {
+      const ladder1 = nacl.randomBytes(32);
+      const ladder2 = nacl.randomBytes(32);
+      const ephemeral1 = nacl.randomBytes(32);
+      const ephemeral2 = nacl.randomBytes(32);
+      
+      // Merge in both orders should give same result
+      const merged1 = mergeLadders(ladder1, ladder2, ephemeral1, ephemeral2);
+      const merged2 = mergeLadders(ladder2, ladder1, ephemeral2, ephemeral1);
+      
+      expect(merged1).toEqual(merged2);
+      expect(merged1).toHaveLength(32);
+    });
+    
+    it('should detect simultaneous initiation', () => {
+      const now = Date.now();
+      
+      const msg1 = {
+        timestamp: now,
+        // ... other fields not needed for this test
+      } as any;
+      
+      const msg2 = {
+        timestamp: now + 5000, // 5 seconds later
+      } as any;
+      
+      const msg3 = {
+        timestamp: now + 40000, // 40 seconds later
+      } as any;
+      
+      // Within 30-second window
+      expect(detectSimultaneousInitiation(msg1, msg2)).toBe(true);
+      
+      // Outside 30-second window
+      expect(detectSimultaneousInitiation(msg1, msg3)).toBe(false);
+    });
+  });
+
+  describe('Forward secrecy', () => {
+    it('should securely delete s2', () => {
+      const epoch = generateEpochParams();
+      const originalS2 = new Uint8Array(epoch.s2);
+      
+      // Delete s2
+      deleteEpochS2(epoch);
+      
+      // s2 should be zeroed out
+      expect(epoch.s2).toHaveLength(0);
+      
+      // Original s2 data should be different (overwritten)
+      // Note: In tests we can't guarantee secure deletion works,
+      // but we can verify the API behavior
+      expect(epoch.s2).not.toEqual(originalS2);
+    });
+    
+    it('should not be able to compute v_i after s2 deletion', () => {
+      const epoch = generateEpochParams();
+      const index = 123;
+      
+      // Can compute v_i before deletion
+      const v_i_before = computePrivateScalarForVi(
+        epoch.s1,
+        epoch.s2,
+        epoch.A,
+        epoch.B,
+        index
+      );
+      expect(v_i_before).toHaveLength(32);
+      
+      // Delete s2
+      deleteEpochS2(epoch);
+      
+      // Cannot compute v_i after deletion (s2 is empty)
+      expect(() => {
+        computePrivateScalarForVi(
+          epoch.s1,
+          epoch.s2,
+          epoch.A,
+          epoch.B,
+          index
+        );
+      }).toThrow();
+    });
+  });
+
+  describe('Epoch validity', () => {
+    it('should correctly check epoch validity', () => {
+      const now = Date.now();
+      
+      // Valid epoch
+      const validEpoch = generateEpochParams(now - 1000, 10000);
+      expect(isEpochValid(validEpoch)).toBe(true);
+      
+      // Future epoch
+      const futureEpoch = generateEpochParams(now + 10000, 10000);
+      expect(isEpochValid(futureEpoch)).toBe(false);
+      
+      // Expired epoch
+      const expiredEpoch = generateEpochParams(now - 20000, 10000);
+      expect(isEpochValid(expiredEpoch)).toBe(false);
+    });
+  });
+
+  describe('Cryptographic properties', () => {
+    it('should produce uniformly distributed V_i values', () => {
+      const epoch = generateEpochParams();
+      const samples = 100;
+      const values = new Set<string>();
+      
+      for (let i = 0; i < samples; i++) {
+        const V_i = computePRPCap(epoch.A, epoch.B, i);
+        const hex = Array.from(V_i).map(b => b.toString(16).padStart(2, '0')).join('');
+        values.add(hex);
+      }
+      
+      // All V_i should be unique
+      expect(values.size).toBe(samples);
+    });
+    
+    it('should maintain DH commutativity', () => {
+      // Generate two key pairs
+      const scalar1 = generateScalar();
+      const point1 = scalarMultBase(scalar1);
+      
+      const scalar2 = generateScalar();
+      const point2 = scalarMultBase(scalar2);
+      
+      // DH should be commutative
+      const dh1 = ed25519DH(scalar1, point2);
+      const dh2 = ed25519DH(scalar2, point1);
+      
+      expect(sha512(dh1)).toEqual(sha512(dh2));
+    });
+  });
+});

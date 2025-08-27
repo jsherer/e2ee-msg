@@ -1,6 +1,7 @@
 # PRP-Cap 0-RTT Key Exchange: Proof of Concept Summary
 
 **PRP-Cap**: Pseudorandom Permutation Capability - a cryptographic construction that provides unlimited ephemeral keys from a capability-bounded set of public parameters.
+**0-RTT**: Zero round-trip time - no round trip required before cryptographic key sharing
 
 ## Executive Summary
 
