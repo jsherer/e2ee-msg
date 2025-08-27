@@ -1,462 +1,319 @@
 /**
- * PRP-Cap Protocol Core Implementation
- * Implements the Pseudorandom Permutation Capability protocol for 0-RTT key exchange
+ * Actual PRP-Cap Protocol Implementation
+ * This implements the real protocol: V_i = A + t_i·B
+ * 
+ * Note: This requires @noble/ed25519 for point operations.
+ * To use in Jest tests, you'll need to transpile or use tsx.
  */
 
 import * as nacl from 'tweetnacl';
 
-// Use nacl.hash for SHA-512 instead of @noble/hashes to avoid module issues  
-const sha512 = (data: Uint8Array): Uint8Array => nacl.hash(data);
-import { 
-  generateScalar, 
-  scalarMultBase, 
-  pointAdd, 
-  scalarMultPoint,
-  scalarAdd,
-  scalarMult,
-  hashToScalar,
-  ed25519DH,
-  bytesToNumberLE,
-  numberToBytesLE,
-  secureErase
-} from './ed25519-ops';
-import {
-  EpochParams,
-  PublicEpochInfo,
-  PRPCapIdentity,
-  InitialMessage,
-  CreateMessageParams,
-  ProcessMessageResult,
-  PRPCapSession,
-  PRPCapSessionState,
-  PRPCapConfig
-} from '../types/prpcap';
+// We'll dynamically import @noble/ed25519 to handle the ES module issue
+let ed: any = null;
+let sha512Impl: (data: Uint8Array) => Uint8Array = nacl.hash;
 
 /**
- * Default configuration for PRP-Cap protocol
+ * Initialize the Ed25519 library
  */
-export const DEFAULT_CONFIG: PRPCapConfig = {
-  epochDuration: 30 * 24 * 60 * 60 * 1000,  // 30 days
-  detectionWindow: 30 * 1000,               // 30 seconds
-  indexSpace: 2 ** 32,                      // 4 billion indices
-  maxSkippedIndices: 1000,
-  domain: 'PRP-CAP-v1',
-  singleLadderContext: 'SingleLadder',
-  doubleLadderContext: 'DoubleLadder'
-};
-
-/**
- * Generate new epoch parameters
- */
-export function generateEpochParams(
-  validFrom?: number, 
-  duration: number = DEFAULT_CONFIG.epochDuration
-): EpochParams {
-  // Generate random scalars
-  const s1 = generateScalar();
-  const s2 = generateScalar();
+export async function initializeEd25519(): Promise<void> {
+  if (ed) return;
   
-  // Compute public points
-  const A = scalarMultBase(s1);
-  const B = scalarMultBase(s2);
-  
-  // Set validity period
-  const now = Date.now();
-  const from = validFrom || now;
-  const until = from + duration;
-  
-  // Generate epoch ID
-  const epochData = new Uint8Array(64);
-  epochData.set(A, 0);
-  epochData.set(B, 32);
-  const epochId = Array.from(sha512(epochData).slice(0, 16))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-  
-  return {
-    A,
-    B,
-    s1,
-    s2,
-    validFrom: from,
-    validUntil: until,
-    epochId
-  };
+  try {
+    // Dynamic import to handle ES modules
+    const edModule = await import('@noble/ed25519');
+    const hashModule = await import('@noble/hashes/sha2');
+    
+    ed = edModule;
+    sha512Impl = (data: Uint8Array) => hashModule.sha512(data);
+    
+    // Configure SHA-512 for @noble/ed25519
+    ed.etc.sha512Sync = (...m: Uint8Array[]) => {
+      const concat = ed.etc.concatBytes(...m);
+      return sha512Impl(concat);
+    };
+  } catch (error) {
+    console.warn('Failed to load @noble/ed25519, falling back to nacl');
+    // Fallback - won't support point addition but basic ops will work
+    sha512Impl = nacl.hash;
+  }
 }
 
 /**
- * Extract public information from epoch params
+ * Convert bytes to little-endian bigint
  */
-export function getPublicEpochInfo(params: EpochParams): PublicEpochInfo {
-  return {
-    A: params.A,
-    B: params.B,
-    validFrom: params.validFrom,
-    validUntil: params.validUntil,
-    epochId: params.epochId
-  };
+export function bytesToNumberLE(bytes: Uint8Array): bigint {
+  let result = 0n;
+  for (let i = 0; i < bytes.length; i++) {
+    result += BigInt(bytes[i]) << BigInt(8 * i);
+  }
+  return result;
+}
+
+/**
+ * Convert bigint to little-endian bytes
+ */
+export function numberToBytesLE(num: bigint, len: number): Uint8Array {
+  const bytes = new Uint8Array(len);
+  let temp = num;
+  for (let i = 0; i < len; i++) {
+    bytes[i] = Number(temp & 0xffn);
+    temp >>= 8n;
+  }
+  return bytes;
+}
+
+/**
+ * Hash to scalar for t_i derivation
+ */
+export function hashToScalar(data: Uint8Array): Uint8Array {
+  const hash = sha512Impl(data);
+  if (ed) {
+    const scalar_bigint = ed.etc.mod(bytesToNumberLE(hash), ed.CURVE.n);
+    return numberToBytesLE(scalar_bigint, 32);
+  } else {
+    // Fallback without proper modular reduction
+    const scalar = hash.slice(0, 32);
+    scalar[0] &= 248;
+    scalar[31] &= 127;
+    scalar[31] |= 64;
+    return scalar;
+  }
+}
+
+/**
+ * PRP-Cap Epoch Parameters
+ */
+export interface PRPCapEpoch {
+  A: Uint8Array;  // s1·G
+  B: Uint8Array;  // s2·G
+  s1: Uint8Array; // Secret scalar 1
+  s2: Uint8Array; // Secret scalar 2
+}
+
+/**
+ * Generate epoch parameters for PRP-Cap
+ */
+export async function generatePRPCapEpoch(): Promise<PRPCapEpoch> {
+  await initializeEd25519();
+  
+  if (!ed) {
+    throw new Error('Ed25519 library not initialized');
+  }
+  
+  // Generate random scalars
+  const s1_seed = ed.utils.randomPrivateKey();
+  const s2_seed = ed.utils.randomPrivateKey();
+  
+  // Extract the actual scalars
+  const s1_hash = sha512Impl(s1_seed);
+  const s2_hash = sha512Impl(s2_seed);
+  
+  const s1 = s1_hash.slice(0, 32);
+  s1[0] &= 248;
+  s1[31] &= 63;
+  s1[31] |= 64;
+  
+  const s2 = s2_hash.slice(0, 32);
+  s2[0] &= 248;
+  s2[31] &= 63;
+  s2[31] |= 64;
+  
+  // Compute public points
+  const s1_bigint = ed.etc.mod(bytesToNumberLE(s1), ed.CURVE.n);
+  const s2_bigint = ed.etc.mod(bytesToNumberLE(s2), ed.CURVE.n);
+  
+  const A = ed.Point.BASE.multiply(s1_bigint).toRawBytes();
+  const B = ed.Point.BASE.multiply(s2_bigint).toRawBytes();
+  
+  return { A, B, s1, s2 };
 }
 
 /**
  * Compute PRP Capability: V_i = A + t_i·B
  */
-export function computePRPCap(
+export async function computeVi(
   A: Uint8Array,
   B: Uint8Array,
-  index: number,
-  domain: string = DEFAULT_CONFIG.domain
-): Uint8Array {
-  // Prepare hash input: domain || index || A || B
-  const domainBytes = new TextEncoder().encode(domain);
+  index: number
+): Promise<Uint8Array> {
+  await initializeEd25519();
+  
+  if (!ed) {
+    throw new Error('Ed25519 library not initialized');
+  }
+  
+  const domain = new TextEncoder().encode('PRP-CAP');
   const indexBytes = new Uint8Array(4);
   new DataView(indexBytes.buffer).setUint32(0, index, false);
   
-  const hashInput = new Uint8Array(domainBytes.length + 4 + 64);
-  hashInput.set(domainBytes, 0);
-  hashInput.set(indexBytes, domainBytes.length);
-  hashInput.set(A, domainBytes.length + 4);
-  hashInput.set(B, domainBytes.length + 36);
+  const hashInput = new Uint8Array(domain.length + 4 + 64);
+  hashInput.set(domain, 0);
+  hashInput.set(indexBytes, domain.length);
+  hashInput.set(A, domain.length + 4);
+  hashInput.set(B, domain.length + 36);
   
-  // Compute t_i = H(domain || i || A || B)
   const t_i = hashToScalar(hashInput);
+  const t_i_bigint = ed.etc.mod(bytesToNumberLE(t_i), ed.CURVE.n);
   
-  // Compute V_i = A + t_i·B
-  const tiB = scalarMultPoint(t_i, B);
-  const V_i = pointAdd(A, tiB);
+  const pointA = ed.Point.fromHex(A);
+  const pointB = ed.Point.fromHex(B);
+  const tiB = pointB.multiply(t_i_bigint);
+  const V_i = pointA.add(tiB);
   
-  return V_i;
+  return V_i.toRawBytes();
 }
 
 /**
- * Compute private scalar for V_i
- * v_i = s1 + t_i·s2 (mod n)
+ * Compute private scalar: v_i = s1 + t_i·s2
  */
-export function computePrivateScalarForVi(
+export async function compute_vi(
   s1: Uint8Array,
   s2: Uint8Array,
   A: Uint8Array,
   B: Uint8Array,
-  index: number,
-  domain: string = DEFAULT_CONFIG.domain
-): Uint8Array {
-  // Prepare hash input (same as computePRPCap)
-  const domainBytes = new TextEncoder().encode(domain);
+  index: number
+): Promise<Uint8Array> {
+  await initializeEd25519();
+  
+  if (!ed) {
+    throw new Error('Ed25519 library not initialized');
+  }
+  
+  const domain = new TextEncoder().encode('PRP-CAP');
   const indexBytes = new Uint8Array(4);
   new DataView(indexBytes.buffer).setUint32(0, index, false);
   
-  const hashInput = new Uint8Array(domainBytes.length + 4 + 64);
-  hashInput.set(domainBytes, 0);
-  hashInput.set(indexBytes, domainBytes.length);
-  hashInput.set(A, domainBytes.length + 4);
-  hashInput.set(B, domainBytes.length + 36);
+  const hashInput = new Uint8Array(domain.length + 4 + 64);
+  hashInput.set(domain, 0);
+  hashInput.set(indexBytes, domain.length);
+  hashInput.set(A, domain.length + 4);
+  hashInput.set(B, domain.length + 36);
   
-  // Compute t_i
   const t_i = hashToScalar(hashInput);
   
-  // Compute v_i = s1 + t_i·s2 (mod n)
-  const ti_s2 = scalarMult(t_i, s2);
-  const v_i = scalarAdd(s1, ti_s2);
+  const s1_bigint = bytesToNumberLE(s1);
+  const s2_bigint = bytesToNumberLE(s2);
+  const t_i_bigint = ed.etc.mod(bytesToNumberLE(t_i), ed.CURVE.n);
   
-  return v_i;
+  const ti_s2 = ed.etc.mod(t_i_bigint * s2_bigint, ed.CURVE.n);
+  const v_i_bigint = ed.etc.mod(s1_bigint + ti_s2, ed.CURVE.n);
+  
+  return numberToBytesLE(v_i_bigint, 32);
 }
 
 /**
- * Generate a random or timestamp-based index
+ * Ed25519 Diffie-Hellman: DH(secret, point)
  */
-export function generateIndex(useTimestamp: boolean = false): number {
-  if (useTimestamp) {
-    // Use current timestamp as index (seconds since epoch)
-    return Math.floor(Date.now() / 1000);
-  } else {
-    // Generate random index
-    const bytes = new Uint8Array(4);
-    crypto.getRandomValues(bytes);
-    return new DataView(bytes.buffer).getUint32(0, false);
+export async function ed25519DH(secret: Uint8Array, publicPoint: Uint8Array): Promise<Uint8Array> {
+  await initializeEd25519();
+  
+  if (!ed) {
+    throw new Error('Ed25519 library not initialized');
   }
+  
+  const point = ed.Point.fromHex(publicPoint);
+  const scalar = ed.etc.mod(bytesToNumberLE(secret), ed.CURVE.n);
+  const sharedPoint = point.multiply(scalar);
+  
+  return sharedPoint.toRawBytes();
 }
 
 /**
- * Create an initial 0-RTT message
+ * Create a 0-RTT message using PRP-Cap
  */
-export async function createInitialMessage(
-  params: CreateMessageParams,
-  config: PRPCapConfig = DEFAULT_CONFIG
-): Promise<InitialMessage> {
-  // Extract recipient's epoch info
-  const recipientEpoch = params.recipientIdentity.currentEpoch;
-  if (!('A' in recipientEpoch && 'B' in recipientEpoch)) {
-    throw new Error('Recipient epoch information incomplete');
-  }
+export interface PRPCapMessage {
+  ephemeralPublic: Uint8Array;
+  index: number;
+  ciphertext: Uint8Array;
+  nonce: Uint8Array;
+}
+
+export async function createPRPCapMessage(
+  plaintext: Uint8Array,
+  recipientA: Uint8Array,
+  recipientB: Uint8Array,
+  index: number = Math.floor(Math.random() * 2**32)
+): Promise<PRPCapMessage> {
+  await initializeEd25519();
   
-  // Generate ephemeral keypair
-  const ephemeralScalar = generateScalar();
-  const ephemeralPublic = scalarMultBase(ephemeralScalar);
+  // Generate ephemeral scalar
+  const ephemeralSeed = ed.utils.randomPrivateKey();
+  const ephemeralHash = sha512Impl(ephemeralSeed);
+  const ephemeralScalar = ephemeralHash.slice(0, 32);
+  ephemeralScalar[0] &= 248;
+  ephemeralScalar[31] &= 63;
+  ephemeralScalar[31] |= 64;
   
-  // Select index
-  const index = params.index ?? generateIndex();
+  // Compute ephemeral public
+  const ephemeralBigint = ed.etc.mod(bytesToNumberLE(ephemeralScalar), ed.CURVE.n);
+  const ephemeralPublic = ed.Point.BASE.multiply(ephemeralBigint).toRawBytes();
   
-  // Compute V_i for recipient
-  const V_i = computePRPCap(recipientEpoch.A, recipientEpoch.B, index, config.domain);
+  // Compute V_i
+  const V_i = await computeVi(recipientA, recipientB, index);
   
-  // Compute shared secret: DH(e, V_i)
-  const sharedPoint = ed25519DH(ephemeralScalar, V_i);
-  const sharedSecret = sha512(sharedPoint).slice(0, 32);
+  // DH(ephemeral, V_i)
+  const sharedPoint = await ed25519DH(ephemeralScalar, V_i);
+  const sharedSecret = sha512Impl(sharedPoint).slice(0, 32);
   
-  // Derive encryption key
-  const encryptionKey = sha512(
-    new Uint8Array([
-      ...sharedSecret,
-      ...new TextEncoder().encode(config.singleLadderContext)
-    ])
-  ).slice(0, 32);
+  // Encrypt (ensure proper Uint8Arrays)
+  const nonce = nacl.randomBytes(24);
+  const ciphertext = nacl.secretbox(
+    new Uint8Array(plaintext),
+    new Uint8Array(nonce),
+    new Uint8Array(sharedSecret)
+  );
   
-  // Encrypt message
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-  const ciphertext = nacl.secretbox(params.plaintext, nonce, encryptionKey);
-  
-  // Create message structure
-  const messageId = nacl.randomBytes(16);
-  const timestamp = Date.now();
-  
-  const message: InitialMessage = {
-    version: 1,
-    messageId,
-    timestamp,
-    ephemeralPublicKey: ephemeralPublic,
-    capabilityPoint: V_i,
+  return {
+    ephemeralPublic,
     index,
     ciphertext,
-    nonce,
-    signature: new Uint8Array(0), // Will be filled below
-    senderIdentity: params.myIdentity.identityPublicKey
+    nonce
   };
-  
-  // Sign the message (if we have the secret key)
-  if (params.myIdentity.identitySecretKey) {
-    const dataToSign = new Uint8Array(
-      8 + // version (as 64-bit)
-      16 + // messageId
-      8 + // timestamp (as 64-bit)
-      32 + // ephemeralPublicKey
-      32 + // capabilityPoint
-      4 + // index
-      ciphertext.length +
-      nonce.length
-    );
-    
-    let offset = 0;
-    const view = new DataView(dataToSign.buffer);
-    
-    // Pack data for signing
-    view.setBigUint64(offset, BigInt(message.version), false);
-    offset += 8;
-    dataToSign.set(messageId, offset);
-    offset += 16;
-    view.setBigUint64(offset, BigInt(timestamp), false);
-    offset += 8;
-    dataToSign.set(ephemeralPublic, offset);
-    offset += 32;
-    dataToSign.set(V_i, offset);
-    offset += 32;
-    view.setUint32(offset, index, false);
-    offset += 4;
-    dataToSign.set(ciphertext, offset);
-    offset += ciphertext.length;
-    dataToSign.set(nonce, offset);
-    
-    // Sign with identity key
-    message.signature = (nacl.sign as any).detached(dataToSign, params.myIdentity.identitySecretKey);
-  }
-  
-  // Clean up ephemeral secret
-  secureErase(ephemeralScalar);
-  
-  return message;
 }
 
 /**
- * Process a received initial message
+ * Process a PRP-Cap message
  */
-export async function processInitialMessage(
-  message: InitialMessage,
-  myIdentity: PRPCapIdentity,
-  peerIdentity: PRPCapIdentity,
-  config: PRPCapConfig = DEFAULT_CONFIG
-): Promise<ProcessMessageResult> {
+export async function processPRPCapMessage(
+  message: PRPCapMessage,
+  epoch: PRPCapEpoch
+): Promise<Uint8Array | null> {
+  await initializeEd25519();
+  
   try {
-    // Verify message version
-    if (message.version !== 1) {
-      return { success: false, error: 'Unsupported protocol version' };
-    }
+    // Compute v_i
+    const v_i = await compute_vi(epoch.s1, epoch.s2, epoch.A, epoch.B, message.index);
     
-    // Verify signature
-    const dataToVerify = new Uint8Array(
-      8 + 16 + 8 + 32 + 32 + 4 + 
-      message.ciphertext.length + message.nonce.length
-    );
+    // DH(v_i, ephemeralPublic)
+    const sharedPoint = await ed25519DH(v_i, message.ephemeralPublic);
+    const sharedSecret = sha512Impl(sharedPoint).slice(0, 32);
     
-    let offset = 0;
-    const view = new DataView(dataToVerify.buffer);
-    view.setBigUint64(offset, BigInt(message.version), false);
-    offset += 8;
-    dataToVerify.set(message.messageId, offset);
-    offset += 16;
-    view.setBigUint64(offset, BigInt(message.timestamp), false);
-    offset += 8;
-    dataToVerify.set(message.ephemeralPublicKey, offset);
-    offset += 32;
-    dataToVerify.set(message.capabilityPoint, offset);
-    offset += 32;
-    view.setUint32(offset, message.index, false);
-    offset += 4;
-    dataToVerify.set(message.ciphertext, offset);
-    offset += message.ciphertext.length;
-    dataToVerify.set(message.nonce, offset);
-    
-    const validSignature = (nacl.sign as any).detached.verify(
-      dataToVerify,
-      message.signature,
-      peerIdentity.verificationKey
-    );
-    
-    if (!validSignature) {
-      return { success: false, error: 'Invalid signature' };
-    }
-    
-    // Check if we have the private epoch params
-    const myEpoch = myIdentity.currentEpoch;
-    if (!('s1' in myEpoch && 's2' in myEpoch)) {
-      return { success: false, error: 'Missing private epoch parameters' };
-    }
-    
-    // Compute v_i for the received index
-    const v_i = computePrivateScalarForVi(
-      myEpoch.s1,
-      myEpoch.s2,
-      myEpoch.A,
-      myEpoch.B,
-      message.index,
-      config.domain
-    );
-    
-    // Compute shared secret: DH(v_i, E)
-    const sharedPoint = ed25519DH(v_i, message.ephemeralPublicKey);
-    const sharedSecret = sha512(sharedPoint).slice(0, 32);
-    
-    // Derive decryption key
-    const decryptionKey = sha512(
-      new Uint8Array([
-        ...sharedSecret,
-        ...new TextEncoder().encode(config.singleLadderContext)
-      ])
-    ).slice(0, 32);
-    
-    // Decrypt message
-    const plaintext = nacl.secretbox.open(
-      message.ciphertext,
-      message.nonce,
-      decryptionKey
-    );
-    
-    if (!plaintext) {
-      return { success: false, error: 'Decryption failed' };
-    }
-    
-    // Create session
-    const session: PRPCapSession = {
-      sessionId: Array.from(message.messageId)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join(''),
-      peerIdentity: peerIdentity.identityPublicKey,
-      state: PRPCapSessionState.SINGLE_LADDER,
-      createdAt: Date.now(),
-      lastActivity: Date.now(),
-      ladderType: 'single',
-      theirEphemeral: message.ephemeralPublicKey,
-      sharedSecret,
-      receivedInitial: message,
-      usedIndices: new Set([message.index])
-    };
-    
-    // Clean up
-    secureErase(v_i);
-    
-    return {
-      success: true,
-      session,
-      plaintext
-    };
-    
+    // Decrypt
+    return nacl.secretbox.open(message.ciphertext, message.nonce, sharedSecret);
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
+    return null;
   }
 }
 
 /**
- * Merge two ladder shared secrets for double ladder mode
+ * Test convergence
  */
-export function mergeLadders(
-  ladder1: Uint8Array,
-  ladder2: Uint8Array,
-  ephemeral1: Uint8Array,
-  ephemeral2: Uint8Array,
-  context: string = DEFAULT_CONFIG.doubleLadderContext
-): Uint8Array {
-  // Sort deterministically based on ephemeral public keys
-  const e1Num = bytesToNumberLE(ephemeral1.slice(0, 8));
-  const e2Num = bytesToNumberLE(ephemeral2.slice(0, 8));
+export async function testPRPCapConvergence(): Promise<boolean> {
+  await initializeEd25519();
   
-  let first: Uint8Array, second: Uint8Array;
-  if (e1Num < e2Num) {
-    first = ladder1;
-    second = ladder2;
-  } else {
-    first = ladder2;
-    second = ladder1;
-  }
+  const epoch = await generatePRPCapEpoch();
+  const plaintext = new TextEncoder().encode('Hello PRP-Cap!');
   
-  // Combine with context
-  const combined = new Uint8Array(
-    first.length + second.length + context.length
+  const message = await createPRPCapMessage(
+    plaintext,
+    epoch.A,
+    epoch.B,
+    42
   );
-  combined.set(first, 0);
-  combined.set(second, first.length);
-  combined.set(new TextEncoder().encode(context), first.length + second.length);
   
-  // Final root key derivation
-  return sha512(combined).slice(0, 32);
-}
-
-/**
- * Delete epoch's s2 parameter for forward secrecy
- */
-export function deleteEpochS2(params: EpochParams): void {
-  if (params.s2) {
-    secureErase(params.s2);
-    // Set to empty array to indicate it's been deleted
-    params.s2 = new Uint8Array(0);
-  }
-}
-
-/**
- * Check if an epoch is currently valid
- */
-export function isEpochValid(epoch: PublicEpochInfo | EpochParams): boolean {
-  const now = Date.now();
-  return now >= epoch.validFrom && now <= epoch.validUntil;
-}
-
-/**
- * Check if two messages indicate simultaneous initiation
- */
-export function detectSimultaneousInitiation(
-  sent: InitialMessage,
-  received: InitialMessage,
-  windowMs: number = DEFAULT_CONFIG.detectionWindow
-): boolean {
-  const timeDiff = Math.abs(sent.timestamp - received.timestamp);
-  return timeDiff <= windowMs;
+  const decrypted = await processPRPCapMessage(message, epoch);
+  
+  if (!decrypted) return false;
+  
+  return new TextDecoder().decode(decrypted) === 'Hello PRP-Cap!';
 }

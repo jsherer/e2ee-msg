@@ -14,7 +14,7 @@ import {
   testPRPCapConvergence,
   bytesToNumberLE,
   numberToBytesLE
-} from '../src/utils/prpcap-impl';
+} from '../src/utils/prpcap';
 
 describe('PRP-Cap Protocol Implementation', () => {
   beforeAll(async () => {
