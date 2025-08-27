@@ -1,8 +1,10 @@
 # PRP-Cap 0-RTT Key Exchange: Proof of Concept Summary
 
+**PRP-Cap**: Pseudorandom Permutation Capability - a cryptographic construction that provides unlimited ephemeral keys from a capability-bounded set of public parameters.
+
 ## Executive Summary
 
-We have successfully implemented and proven the core cryptographic innovation of the PRP-Cap (Pseudorandom Permutation Capability) protocol, which enables **unlimited ephemeral keys from just two public points** with **zero round-trip time (0-RTT)** key exchange.
+We have successfully implemented and proven the core cryptographic innovation of the PRP-Cap protocol, which enables **unlimited ephemeral keys from just two public points** with **zero round-trip time (0-RTT)** key exchange.
 
   The prp-cap-poc-convergence.ts demonstrates that:
 
@@ -30,7 +32,11 @@ We have successfully implemented and proven the core cryptographic innovation of
 V_i = A + t_i·B  (public point via Ed25519 addition)
 v_i = s1 + t_i·s2 (private scalar via modular arithmetic)
 v_i·G = V_i      (verified for all tested indices)
+
+where t_i = H("PRP-CAP" || i || A || B) with domain separation
 ```
+
+**Index Semantics**: Each index `i` is consumed exactly once (spent set tracking required) to prevent replay attacks. The `t_i` derivation uses domain-separated hashing to ensure independence between indices.
 
 ### 2. Key Convergence ✅
 The critical proof that both parties derive **identical shared secrets**:
@@ -90,6 +96,17 @@ Alice can immediately encrypt to Bob using only:
 1. **Forward Secrecy**: Deleting `s2` at epoch end prevents decryption of future messages
 2. **No Key Exhaustion**: Unlimited indices available without storage
 3. **Deterministic but Unpredictable**: Can't compute `V_j` from `V_i` without knowing `B` and the relationship
+4. **Replay Prevention**: Index spend-set tracking ensures each index used only once
+
+## Authentication Model
+
+**Important**: The PRP-Cap construction provides **key agreement only**, not authentication. Authentication is achieved through:
+
+- **Ed25519 signatures** over transcript values (ephemeral keys, indices, etc.)
+- **Separate identity keys** distinct from epoch parameters
+- **NOT from the PRP-Cap DH operations themselves**
+
+This is an **authenticated key exchange (AKE)** when combined with signatures, not an unauthenticated Diffie-Hellman.
 
 ## Production Requirements
 
@@ -107,7 +124,7 @@ To deploy PRP-Cap in production, the following components are needed:
 
 ### 3. Infrastructure
 - Epoch parameter distribution mechanism
-- Index management (prevent reuse)
+- Index management with spent-set tracking (prevent reuse)
 - Key commitment schemes
 
 ### 4. Operational
