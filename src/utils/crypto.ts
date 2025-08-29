@@ -21,7 +21,7 @@ export const generateKeyPair = (): KeyPair => {
  */
 export const generatePRPCapKeyPair = async (): Promise<PRPCapKeyPair> => {
   // Generate standard X25519 keypair
-  const keypair = nacl.box.keyPair();
+  const keypair = generateKeyPair();
   
   // Initialize Ed25519 for PRP-Cap
   await initializeEd25519();

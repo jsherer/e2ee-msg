@@ -122,6 +122,8 @@ export async function generatePRPCapEpoch(): Promise<PRPCapEpoch> {
   const s1_bigint = ed.etc.mod(bytesToNumberLE(s1), ed.CURVE.n);
   const s2_bigint = ed.etc.mod(bytesToNumberLE(s2), ed.CURVE.n);
   
+  // A = s1 * G
+  // B = s2 * G
   const A = ed.Point.BASE.multiply(s1_bigint).toRawBytes();
   const B = ed.Point.BASE.multiply(s2_bigint).toRawBytes();
   
@@ -152,9 +154,11 @@ export async function computeVi(
   hashInput.set(A, domain.length + 4);
   hashInput.set(B, domain.length + 36);
   
+  // ti = H(info || i || A || B)
   const t_i = hashToScalar(hashInput);
   const t_i_bigint = ed.etc.mod(bytesToNumberLE(t_i), ed.CURVE.n);
   
+  // V_i = A + ti * BB
   const pointA = ed.Point.fromHex(A);
   const pointB = ed.Point.fromHex(B);
   const tiB = pointB.multiply(t_i_bigint);
