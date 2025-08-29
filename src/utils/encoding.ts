@@ -184,8 +184,8 @@ export const encodePRPCapPublicKey = (
   // Metadata
   combined.set(metadataBytes, offset);
   
-  // Encode as base32
-  return uint8ArrayToBase32(combined);
+  // Encode as Crockford base32 (consistent with the rest of the app)
+  return uint8ArrayToBase32Crockford(combined);
 };
 
 /**
@@ -200,7 +200,8 @@ export const decodePRPCapPublicKey = (encoded: string): {
   epochId: string;
 } | null => {
   try {
-    const combined = base32ToUint8Array(encoded);
+    // Decode from Crockford base32
+    const combined = base32CrockfordToUint8Array(encoded);
     
     // Check version
     if (combined[0] !== 0x01) {
