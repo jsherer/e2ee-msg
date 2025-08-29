@@ -31,7 +31,7 @@ export const useCrypto = (
     operations,
     isProcessing,
     sessionCount
-  } = useRatchet(keypair, masterKey);
+  } = useRatchet(keypair);
 
   const parsePublicKey = useCallback((keyString: string): Uint8Array => {
     if (isBIP39Format(keyString)) {
@@ -44,9 +44,7 @@ export const useCrypto = (
 
   // Extract identity key from a bundle (first 32 bytes)
   const extractIdentityKey = useCallback((keyOrBundle: Uint8Array): Uint8Array => {
-    if (keyOrBundle.length === 32) {
-      return keyOrBundle;
-    } else if (keyOrBundle.length === 64) {
+    if (keyOrBundle.length >= 32) {
       return keyOrBundle.slice(0, 32);
     } else {
       throw new Error(`Invalid key size: ${keyOrBundle.length} bytes`);

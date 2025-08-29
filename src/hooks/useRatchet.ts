@@ -2,23 +2,20 @@
  * Hook for managing Double Ratchet Protocol state and operations
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { RatchetState, RatchetOperation } from '../types/ratchet';
 import { KeyPair } from '../types';
 import {
   initializeRatchet,
   ratchetEncrypt,
   ratchetDecrypt,
-  serializeRatchetState,
-  deserializeRatchetState,
   getRatchetStorageKey
 } from '../utils/ratchet';
 
 const MAX_OPERATIONS = 20; // Maximum operations to keep in history
 
 export const useRatchet = (
-  keypair: KeyPair | null,
-  masterKey: string
+  keypair: KeyPair | null
 ) => {
   const [ratchetSessions, setRatchetSessions] = useState<Map<string, RatchetState>>(new Map());
   const [currentSessionKey, setCurrentSessionKey] = useState<string | null>(null);
@@ -40,45 +37,7 @@ export const useRatchet = (
     });
   }, []);
 
-  // Load sessions from localStorage on mount
-  useEffect(() => {
-    if (!keypair || !masterKey) return;
-
-    const loadedSessions = new Map<string, RatchetState>();
-    
-    // Try to load existing sessions
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('ratchet_')) {
-        try {
-          const serialized = localStorage.getItem(key);
-          if (serialized) {
-            const state = deserializeRatchetState(serialized, masterKey);
-            if (state) {
-              loadedSessions.set(key, state);
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to load session ${key}:`, error);
-        }
-      }
-    }
-    
-    setRatchetSessions(loadedSessions);
-  }, [keypair, masterKey]);
-
-  // Save session to localStorage
-  const saveSession = useCallback((sessionKey: string, state: RatchetState) => {
-    if (!masterKey) return;
-    
-    try {
-      const serialized = serializeRatchetState(state, masterKey);
-      localStorage.setItem(sessionKey, serialized);
-    } catch (error) {
-      console.error('Failed to save ratchet session:', error);
-      addOperation('error', 'Failed to save session');
-    }
-  }, [masterKey, addOperation]);
+  // Sessions are now only kept in memory - no localStorage persistence
 
   // Initialize a new ratchet session
   const initializeSession = useCallback((theirPublicKey: Uint8Array): RatchetState | null => {
@@ -100,7 +59,6 @@ export const useRatchet = (
       });
       
       setCurrentSessionKey(sessionKey);
-      saveSession(sessionKey, state);
       
       addOperation('init', `Session initialized with ${Array.from(theirPublicKey.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('')}...`);
       
@@ -112,7 +70,7 @@ export const useRatchet = (
     } finally {
       setIsProcessing(false);
     }
-  }, [keypair, saveSession, addOperation]);
+  }, [keypair, addOperation]);
 
   // Get or create session for a recipient
   const getOrCreateSession = useCallback((theirPublicKey: Uint8Array): RatchetState | null => {
@@ -159,7 +117,6 @@ export const useRatchet = (
         return newSessions;
       });
       
-      saveSession(sessionKey, newState);
       
       // Add operation
       const dhRatcheted = state.theirLatestEphemeralPublicKey !== null;
@@ -176,7 +133,7 @@ export const useRatchet = (
     } finally {
       setIsProcessing(false);
     }
-  }, [keypair, getOrCreateSession, saveSession, addOperation]);
+  }, [keypair, getOrCreateSession, addOperation]);
 
   // Decrypt a message with ratchet
   const decryptWithRatchet = useCallback((
@@ -210,7 +167,6 @@ export const useRatchet = (
         return newSessions;
       });
       
-      saveSession(sessionKey, newState);
       
       // Add operations
       const dhRatcheted = !oldEphemeral || 
@@ -235,7 +191,7 @@ export const useRatchet = (
     } finally {
       setIsProcessing(false);
     }
-  }, [keypair, getOrCreateSession, saveSession, addOperation]);
+  }, [keypair, getOrCreateSession, addOperation]);
 
   // Reset a session
   const resetSession = useCallback((theirPublicKey: Uint8Array) => {
@@ -249,9 +205,6 @@ export const useRatchet = (
       newSessions.delete(sessionKey);
       return newSessions;
     });
-    
-    // Remove from localStorage
-    localStorage.removeItem(sessionKey);
     
     // Clear current session if it matches
     if (currentSessionKey === sessionKey) {
@@ -269,16 +222,6 @@ export const useRatchet = (
 
   // Clear all sessions
   const clearAllSessions = useCallback(() => {
-    // Clear from localStorage
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('ratchet_')) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    
     // Clear state
     setRatchetSessions(new Map());
     setCurrentSessionKey(null);

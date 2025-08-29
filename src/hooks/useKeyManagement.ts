@@ -3,10 +3,12 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ExtendedKeyPair, KeyPair, KeyPairDisplay } from '../types';
+import { ExtendedKeyPair, KeyPair, KeyPairDisplay, PRPCapKeyPair } from '../types';
 import {
   generateKeyPair,
   generateKeyPairFromSecretKey,
+  generatePRPCapKeyPair,
+  generatePRPCapKeyPairFromSecretKey,
   encryptSecretKey,
   decryptSecretKey
 } from '../utils/crypto';
@@ -14,22 +16,31 @@ import {
   uint8ArrayToBase32Crockford,
   base32CrockfordToUint8Array,
   formatInGroups,
-  generateUserId
+  generateUserId,
+  encodePRPCapPublicKey
 } from '../utils/encoding';
 import { encryptToFragment, decryptFromFragment, PlainPayload } from '../utils/seal';
 
 interface KeyData {
   secretKey: string; // Base32 encoded secret key
   publicKey: string; // Base32 encoded public key
+  // PRP-Cap epoch parameters
+  epochA?: string; // Base32 encoded epoch point A (32 bytes)
+  epochB?: string; // Base32 encoded epoch point B (32 bytes)
+  epochS1?: string; // Base32 encoded epoch secret s1 (32 bytes)
+  epochS2?: string; // Base32 encoded epoch secret s2 (32 bytes)
+  epochValidFrom?: number; // Unix timestamp
+  epochValidUntil?: number; // Unix timestamp
+  epochId?: string; // Hex string identifier
+  // Legacy fields (for backward compatibility)
   ephemeralSeedSecret?: string; // Base32 encoded ephemeral seed secret (Ladder)
   ephemeralSeedPublic?: string; // Base32 encoded ephemeral seed public (Ladder)
   timestamp: number;
 }
 
 export const useKeyManagement = () => {
-  const [keypair, setKeypair] = useState<KeyPair | null>(null);
+  const [keypair, setKeypair] = useState<PRPCapKeyPair | null>(null);
   const [keypairDisplay, setKeypairDisplay] = useState<KeyPairDisplay | null>(null);
-  const [ephemeralSeed, setEphemeralSeed] = useState<KeyPair | null>(null);
   const [masterKey, setMasterKey] = useState('');
   const [masterKeyLocked, setMasterKeyLocked] = useState(false);
   const [waitingForMasterKey, setWaitingForMasterKey] = useState(false);
@@ -39,14 +50,20 @@ export const useKeyManagement = () => {
   const [isSavingKeys, setIsSavingKeys] = useState(false);
   const [isLocking, setIsLocking] = useState(false);
 
-  const saveKeysToUrl = useCallback(async (pair: KeyPair, seed: KeyPair | null, passphrase: string) => {
+  const saveKeysToUrl = useCallback(async (pair: PRPCapKeyPair, passphrase: string) => {
     setIsSavingKeys(true);
     try {
       const keyData: KeyData = {
         secretKey: uint8ArrayToBase32Crockford(pair.secretKey),
         publicKey: uint8ArrayToBase32Crockford(pair.publicKey),
-        ephemeralSeedSecret: seed ? uint8ArrayToBase32Crockford(seed.secretKey) : undefined,
-        ephemeralSeedPublic: seed ? uint8ArrayToBase32Crockford(seed.publicKey) : undefined,
+        // Save PRP-Cap epoch parameters if present
+        epochA: pair.epoch ? uint8ArrayToBase32Crockford(pair.epoch.A) : undefined,
+        epochB: pair.epoch ? uint8ArrayToBase32Crockford(pair.epoch.B) : undefined,
+        epochS1: pair.epoch?.s1 ? uint8ArrayToBase32Crockford(pair.epoch.s1) : undefined,
+        epochS2: pair.epoch?.s2 ? uint8ArrayToBase32Crockford(pair.epoch.s2) : undefined,
+        epochValidFrom: pair.epoch?.validFrom,
+        epochValidUntil: pair.epoch?.validUntil,
+        epochId: pair.epoch?.epochId,
         timestamp: Date.now()
       };
 
@@ -84,12 +101,10 @@ export const useKeyManagement = () => {
     }
   }, []);
 
-  const generateNewKeypair = useCallback(async (): Promise<KeyPair> => {
-    const pair = generateKeyPair();
-    const seed = generateKeyPair(); // Generate ephemeral seed for Ladder
+  const generateNewKeypair = useCallback(async (): Promise<PRPCapKeyPair> => {
+    const pair = await generatePRPCapKeyPair();
     
     setKeypair(pair);
-    setEphemeralSeed(seed);
     
     const publicKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
     const secretKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
@@ -101,7 +116,7 @@ export const useKeyManagement = () => {
     
     // Save to URL if we have a master key (regeneration case)
     if (masterKey && masterKeyLocked) {
-      await saveKeysToUrl(pair, seed, masterKey);
+      await saveKeysToUrl(pair, masterKey);
     }
     
     return pair;
@@ -118,25 +133,32 @@ export const useKeyManagement = () => {
         lastSeenSeq
       });
 
-      // Restore the keypair
+      // Restore the keypair with epoch if available
       const secretKeyBytes = base32CrockfordToUint8Array(payload.data.secretKey);
-      const pair = generateKeyPairFromSecretKey(secretKeyBytes);
+      
+      let pair: PRPCapKeyPair;
+      let needsUpdate = false;
+      
+      // Check if we have PRP-Cap epoch data
+      if (payload.data.epochA && payload.data.epochB) {
+        // Restore with existing epoch parameters
+        const existingEpoch = {
+          A: base32CrockfordToUint8Array(payload.data.epochA),
+          B: base32CrockfordToUint8Array(payload.data.epochB),
+          s1: payload.data.epochS1 ? base32CrockfordToUint8Array(payload.data.epochS1) : undefined,
+          s2: payload.data.epochS2 ? base32CrockfordToUint8Array(payload.data.epochS2) : undefined,
+          validFrom: payload.data.epochValidFrom || Date.now(),
+          validUntil: payload.data.epochValidUntil || Date.now() + (30 * 24 * 60 * 60 * 1000),
+          epochId: payload.data.epochId || ''
+        };
+        pair = await generatePRPCapKeyPairFromSecretKey(secretKeyBytes, existingEpoch);
+      } else {
+        // Legacy format or missing epoch - generate new epoch parameters
+        pair = await generatePRPCapKeyPairFromSecretKey(secretKeyBytes);
+        needsUpdate = true; // Need to save the new epoch parameters
+      }
       
       setKeypair(pair);
-      
-      // Restore ephemeral seed if present, or generate new one
-      let ephemeralSeed: KeyPair;
-      let needsUpdate = false;
-      if (payload.data.ephemeralSeedSecret) {
-        const seedSecretBytes = base32CrockfordToUint8Array(payload.data.ephemeralSeedSecret);
-        ephemeralSeed = generateKeyPairFromSecretKey(seedSecretBytes);
-        setEphemeralSeed(ephemeralSeed);
-      } else {
-        // Generate new ephemeral seed for Ladder protocol
-        ephemeralSeed = generateKeyPair();
-        setEphemeralSeed(ephemeralSeed);
-        needsUpdate = true; // Need to save the new ephemeral seed
-      }
       
       const publicKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.publicKey));
       const secretKeyBase32 = formatInGroups(uint8ArrayToBase32Crockford(pair.secretKey));
@@ -149,8 +171,8 @@ export const useKeyManagement = () => {
       setLastSeenSeq(payload.seq);
 
       if (needsUpdate) {
-        // Save with the new ephemeral seed
-        await saveKeysToUrl(pair, ephemeralSeed, passphrase);
+        // Save with the new PRP-Cap epoch parameters
+        await saveKeysToUrl(pair, passphrase);
       } else {
         // Rotate the fragment with a fresh nonce
         const rotated = await rotate(true);
@@ -194,7 +216,8 @@ export const useKeyManagement = () => {
         const decrypted = decryptSecretKey(encryptedData, masterKey);
         
         if (decrypted && decrypted.length === 32) {
-          const pair = generateKeyPairFromSecretKey(decrypted);
+          // Migrate to PRP-Cap format
+          const pair = await generatePRPCapKeyPairFromSecretKey(decrypted);
           
           setKeypair(pair);
           
@@ -206,10 +229,8 @@ export const useKeyManagement = () => {
             secretKey: secretKeyBase32
           });
           
-          // Migrate to new format (generate ephemeral seed for Ladder)
-          const seed = generateKeyPair();
-          setEphemeralSeed(seed);
-          await saveKeysToUrl(pair, seed, masterKey);
+          // Save in new format with PRP-Cap epoch parameters
+          await saveKeysToUrl(pair, masterKey);
           setWaitingForMasterKey(false);
           setMasterKeyLocked(true);
           setIsUnlocking(false);
@@ -229,9 +250,7 @@ export const useKeyManagement = () => {
     // No existing hash, generate new
     else {
       const pair = await generateNewKeypair();
-      const seed = generateKeyPair(); // Generate ephemeral seed
-      setEphemeralSeed(seed);
-      await saveKeysToUrl(pair, seed, masterKey);
+      await saveKeysToUrl(pair, masterKey);
       setMasterKeyLocked(true);
       setIsUnlocking(false);
       return true;
@@ -308,19 +327,23 @@ export const useKeyManagement = () => {
     setNonceCounter(prev => prev + 1);
   };
 
-  // Format 64-byte bundle for Ladder protocol (IK_dh_pub || ES_pub)
+  // Format public key bundle with PRP-Cap epoch parameters
   const formatPublicKeyBundle = useCallback((): Uint8Array | null => {
-    if (!keypair || !ephemeralSeed) return null;
-    const bundle = new Uint8Array(64);
+    if (!keypair || !keypair.epoch) return null;
+    
+    // Create a bundle with public key and epoch parameters
+    // Format: publicKey (32) + A (32) + B (32) = 96 bytes
+    const bundle = new Uint8Array(96);
     bundle.set(keypair.publicKey, 0);
-    bundle.set(ephemeralSeed.publicKey, 32);
+    bundle.set(keypair.epoch.A, 32);
+    bundle.set(keypair.epoch.B, 64);
     return bundle;
-  }, [keypair, ephemeralSeed]);
+  }, [keypair]);
 
-  // Check if we have Ladder-compatible keys
-  const hasLadderKeys = useCallback((): boolean => {
-    return !!(keypair && ephemeralSeed);
-  }, [keypair, ephemeralSeed]);
+  // Check if we have PRP-Cap support
+  const hasPRPCapSupport = useCallback((): boolean => {
+    return !!(keypair && keypair.epoch && keypair.epoch.A && keypair.epoch.B);
+  }, [keypair]);
 
   const changeMasterKey = useCallback(async (newMasterKey: string): Promise<boolean> => {
     if (!keypair || !masterKey || newMasterKey.length < 12) {
@@ -329,7 +352,7 @@ export const useKeyManagement = () => {
 
     try {
       // Save keys with new master key
-      await saveKeysToUrl(keypair, ephemeralSeed, newMasterKey);
+      await saveKeysToUrl(keypair, newMasterKey);
       
       // Update the master key in state
       setMasterKey(newMasterKey);
@@ -344,7 +367,6 @@ export const useKeyManagement = () => {
   return {
     keypair,
     keypairDisplay,
-    ephemeralSeed,
     masterKey,
     setMasterKey,
     masterKeyLocked,
@@ -361,6 +383,6 @@ export const useKeyManagement = () => {
     isLocking,
     changeMasterKey,
     formatPublicKeyBundle,
-    hasLadderKeys
+    hasPRPCapSupport
   };
 };
