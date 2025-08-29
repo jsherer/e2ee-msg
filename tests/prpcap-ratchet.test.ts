@@ -75,7 +75,8 @@ describe('PRP-Cap Ratchet Integration', () => {
         keypair.epoch!.epochId
       );
       
-      expect(encoded).toMatch(/^[A-Z2-7=]+$/);
+      // Crockford base32 uses 0-9, A-Z (excluding I, L, O, U)
+      expect(encoded).toMatch(/^[0-9A-HJ-KM-NP-TV-Z]+$/);
       
       const decoded = decodePRPCapPublicKey(encoded);
       expect(decoded).not.toBeNull();
