@@ -255,6 +255,7 @@ const App: React.FC = () => {
               publicKey: publicKeyDisplay || keypairDisplay?.publicKey || '', 
               secretKey: keypairDisplay?.secretKey || '' 
             }}
+            keypair={keypair}
             displayFormat={displayFormat}
             setDisplayFormat={setDisplayFormat}
             copied={copied}
