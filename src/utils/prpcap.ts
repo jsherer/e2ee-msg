@@ -7,6 +7,7 @@
  */
 
 import * as nacl from 'tweetnacl';
+import { hkdfSha512 } from './hkdf';
 
 // We'll dynamically import @noble/ed25519 to handle the ES module issue
 let ed: any = null;
@@ -257,7 +258,18 @@ export async function createPRPCapMessage(
   
   // DH(ephemeral, V_i)
   const sharedPoint = await ed25519DH(ephemeralScalar, V_i);
-  const sharedSecret = sha512Impl(sharedPoint).slice(0, 32);
+  
+  // Derive key using proper HKDF-SHA512 as per spec
+  // salt = empty (no salt for 0-RTT)
+  // ikm = shared DH secret
+  // info = "PRP-Cap-0RTT" || E || V_i
+  const info = new Uint8Array(12 + 32 + 32);
+  const label = new TextEncoder().encode("PRP-Cap-0RTT");
+  info.set(label, 0);
+  info.set(ephemeralPublic, 12);
+  info.set(V_i, 44);
+  
+  const sharedSecret = hkdfSha512(new Uint8Array(0), sharedPoint, info, 32);
   
   // Encrypt (ensure proper Uint8Arrays)
   const nonce = nacl.randomBytes(24);
@@ -288,9 +300,21 @@ export async function processPRPCapMessage(
     // Compute v_i
     const v_i = await compute_vi(epoch.s1, epoch.s2, epoch.A, epoch.B, message.index);
     
+    // Compute V_i point for KDF
+    const V_i = await computeVi(epoch.A, epoch.B, message.index);
+    
     // DH(v_i, ephemeralPublic)
     const sharedPoint = await ed25519DH(v_i, message.ephemeralPublic);
-    const sharedSecret = sha512Impl(sharedPoint).slice(0, 32);
+    
+    // Derive key using proper HKDF-SHA512 as per spec
+    // Must match sender's KDF exactly
+    const info = new Uint8Array(12 + 32 + 32);
+    const label = new TextEncoder().encode("PRP-Cap-0RTT");
+    info.set(label, 0);
+    info.set(message.ephemeralPublic, 12);
+    info.set(V_i, 44);
+    
+    const sharedSecret = hkdfSha512(new Uint8Array(0), sharedPoint, info, 32);
     
     // Decrypt
     return nacl.secretbox.open(message.ciphertext, message.nonce, sharedSecret);
