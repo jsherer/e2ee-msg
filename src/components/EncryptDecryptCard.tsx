@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { IconQrcode } from '@tabler/icons-react';
+import { base32CrockfordToUint8Array, decodePRPCapPublicKey } from '../utils/encoding';
 
 interface EncryptDecryptCardProps {
   recipientPublicKey: string;
@@ -32,6 +33,76 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
   onToggleRatchet,
   ratchetInitialized
 }) => {
+  // Validate and parse the recipient's public key
+  const keyValidation = useMemo(() => {
+    if (!recipientPublicKey || recipientPublicKey.trim() === '') {
+      return { valid: false, message: '', details: null };
+    }
+
+    const trimmedKey = recipientPublicKey.trim();
+
+    // Try to decode as Base32 Crockford
+    try {
+      const keyBytes = base32CrockfordToUint8Array(trimmedKey);
+      
+      // Check if it's a PRP-Cap encoded key
+      if (keyBytes[0] === 0x01) {
+        const decoded = decodePRPCapPublicKey(trimmedKey);
+        if (decoded) {
+          const epochDate = new Date(decoded.validUntil);
+          const isExpired = epochDate < new Date();
+          
+          return {
+            valid: !isExpired,
+            message: isExpired ? 'PRP-Cap key (EXPIRED)' : 'Valid PRP-Cap key with epoch parameters',
+            details: {
+              type: 'PRP-Cap',
+              length: keyBytes.length,
+              format: 'Full PRP-Cap bundle',
+              epochId: decoded.epochId.substring(0, 16) + '...',
+              validUntil: epochDate.toLocaleDateString(),
+              isExpired
+            }
+          };
+        }
+      }
+      
+      // Check standard key sizes
+      if (keyBytes.length === 32) {
+        return {
+          valid: true,
+          message: 'Valid identity key (32 bytes)',
+          details: {
+            type: 'Base32',
+            length: keyBytes.length,
+            format: 'X25519 identity key only'
+          }
+        };
+      } else if (keyBytes.length === 96) {
+        return {
+          valid: true,
+          message: 'Valid key bundle (96 bytes)',
+          details: {
+            type: 'Base32',
+            length: keyBytes.length,
+            format: 'Bundle (Identity + Epoch A + Epoch B)'
+          }
+        };
+      } else {
+        return {
+          valid: false,
+          message: `Invalid key length: ${keyBytes.length} bytes`,
+          details: null
+        };
+      }
+    } catch (error) {
+      return {
+        valid: false,
+        message: 'Invalid Base32 encoding',
+        details: null
+      };
+    }
+  }, [recipientPublicKey]);
   return (
     <div style={{
       backgroundColor: 'white',
@@ -142,6 +213,35 @@ export const EncryptDecryptCard: React.FC<EncryptDecryptCardProps> = ({
             </button>
           )}
         </div>
+        
+        {/* Key validation display */}
+        {recipientPublicKey && keyValidation.message && (
+          <div style={{
+            marginTop: '8px',
+            padding: '8px 12px',
+            backgroundColor: keyValidation.valid ? '#e8f5e9' : '#ffebee',
+            border: `1px solid ${keyValidation.valid ? '#4caf50' : '#f44336'}`,
+            borderRadius: '4px',
+            fontSize: '12px',
+            color: keyValidation.valid ? '#2e7d32' : '#c62828'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: keyValidation.details ? '4px' : '0' }}>
+              {keyValidation.valid ? '✓' : '✗'} {keyValidation.message}
+            </div>
+            {keyValidation.details && (
+              <div style={{ marginTop: '4px', fontSize: '11px', opacity: 0.9 }}>
+                • Format: {keyValidation.details.format}<br/>
+                • Size: {keyValidation.details.length} bytes<br/>
+                {keyValidation.details.epochId && (
+                  <>• Epoch ID: {keyValidation.details.epochId}<br/></>
+                )}
+                {keyValidation.details.validUntil && (
+                  <>• Valid Until: {keyValidation.details.validUntil}</>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: '20px' }}>
